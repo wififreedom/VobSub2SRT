@@ -40,6 +40,21 @@
 
 #include <opencv2/imgcodecs.hpp>
 
+static void
+split(
+    const std::string& src,
+    const char delimiter,
+    std::vector<std::string>& dst) {
+  std::size_t begin = 0;
+  for (std::size_t i = 0; i < src.size(); i++) {
+    if (src[i] == delimiter) {
+      dst.emplace_back(src, begin, i - begin);
+      begin = i + 1;
+    }
+  }
+  dst.emplace_back(src, begin, src.size() - begin);
+}
+
 int
 main2(int argc, char **argv) {
   bool show = false;
@@ -56,7 +71,7 @@ main2(int argc, char **argv) {
   int index = -1;
   int y_threshold = 16;
   std::size_t ocr_batch_size = 20;
-  std::string replacements_file_name;
+  std::string replacements_file_names;
   bool detect_italic = false;
   int base_duration = 0;
   int chars_per_sec = 19;
@@ -82,7 +97,7 @@ main2(int argc, char **argv) {
       add_option("blacklist", blacklist, "Character blacklist to improve the OCR (e.g. \"|\\/`_~<>\")").
       add_option("y-threshold", y_threshold, "Y (luminance) threshold below which colors treated as black (Default: 16)").
       add_option("ocr-batch-size", batch_size, "Perform OCR on combined images. Can fix empty or inaccurate OCR results. (Default: 20).").
-      add_option("replacements", replacements_file_name, "Immediately after, apply the replacements defined in the specified file. File format: (ECMAScript-regex<newline>Sed-style-Replacement<newline><newline>)*").
+      add_option("replacements", replacements_file_names, "Immediately after OCR, apply replacements defined in the specified file(s), file names separated by '+'.").
       add_option("detect-italic", detect_italic, "Detect italic. Add <i> and </i> to the output where applicable.").
       add_option("base-duration", base_duration, "Max subtitle display duration (msec) = base_duration + 1000 * subtitle_length_in_chars / chars_per_sec (Default: 0 = disable, recommended: 1500)").
       add_option("chars-per-sec", chars_per_sec, "See --base-duration (Default: 19, recommended: 15..20).");
@@ -112,9 +127,13 @@ main2(int argc, char **argv) {
   
   // Read the replacements file first, to immediately report syntax errors in
   // the file, instead of after OCR has finished.
-  Replacements replacements(replacements_file_name);
-  if (!replacements_file_name.empty()) {
-    replacements.read();
+  Replacements replacements;
+  {
+    std::vector<std::string> replacements_file_name_vec;
+    split(replacements_file_names, '+', replacements_file_name_vec);
+    for (const auto& it : replacements_file_name_vec) {
+      replacements.read(it);
+    }
   }
 
   OCRSubtitles subtitles(subname);
@@ -126,6 +145,9 @@ main2(int argc, char **argv) {
   
   // Open the sub/idx subtitles
   VobSub vobsub;
+  if (verbose) {
+    std::cerr << "Reading '" << subname << ".idx'" << std::endl;
+  }
   vobsub.open(subname, ifo_file, y_threshold);
 
   // list languages and exit
@@ -226,6 +248,9 @@ main2(int argc, char **argv) {
   unsigned last_end_pts = 0;
   unsigned sub_counter = 1;
 
+  if (verbose) {
+    std::cerr << "Reading subtitle start/end times and images from '" << subname << ".sub'" << std::endl;
+  }
   while ((len = vobsub_get_next_packet(vobsub.vob(), &packet, &timestamp)) > 0) {
     if (timestamp >= 0) {
       spudec_assemble(vobsub.spu(), reinterpret_cast<unsigned char*>(packet), len, timestamp);
@@ -292,16 +317,28 @@ main2(int argc, char **argv) {
     }
   }
 
+  if (verbose) {
+    std::cerr << "Performing OCR" << std::endl;
+  }
   subtitles.do_ocr(tess_base_api, ocr_batch_size);
 
-  if (!replacements_file_name.empty()) {
+  if (!replacements_file_names.empty()) {
+    if (verbose) {
+      std::cerr << "Performing replacements" << std::endl;
+    }
     subtitles.correct_ocr(replacements);
   }
 
   if (detect_italic) {
+    if (verbose) {
+      std::cerr << "Performing italic detection" << std::endl;
+    }
     subtitles.detect_italic();
   }
 
+  if (verbose) {
+    std::cerr << "Writing subtitles to '" << subname << ".srt'" << std::endl;
+  }
   subtitles.write_srt(srt_ofs, base_duration, chars_per_sec, show);
 
   std::cout << "Wrote Subtitles to '" << subname << ".srt'\n";

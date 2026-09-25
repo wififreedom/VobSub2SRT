@@ -79,7 +79,7 @@ public:
   write_srt(
       std::ostream& os) const;
 
-  // Returns the number of symbols, including whitespace:
+  // Returns the number of UTF-8 symbols, including whitespace:
   // spaces between words and newlines in between lines.
   // It does not count a newline at the end.
   std::size_t

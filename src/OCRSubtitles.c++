@@ -41,6 +41,9 @@ img_mean_nonzero(
       }
     }
   }
+  if (!count) {
+    return 0;
+  }
   return (uchar) (total / count);
 }
 

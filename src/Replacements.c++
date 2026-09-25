@@ -71,7 +71,8 @@ read_line(
 }
 
 void
-Replacements::read()
+Replacements::read(
+    const std::string& file_name)
 {
   // Open replacements input file
   std::ifstream ifs;

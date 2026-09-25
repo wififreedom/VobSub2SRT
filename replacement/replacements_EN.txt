@@ -49,8 +49,18 @@ ecmascript
 ^-([^ ])
 - \1
 
-\blam\b
+# Match: "Iam", "lam", "I'm", "l'm" followed by one of ".,!?"
+# Replace with: "I am"
+\b[Il]['a]m\b([.,!?])
+I am\1
+
+# Match: "Iam", "lam", "I'm", "l'm"
+# Replace with: "I'm"
+\b[Il]['a]m\b
 I'm
+
+\baml\b
+am I
 
 # Match: "I'I", "I'l", "l'I", "l'l", "I'II", "I'Il", "I'lI", "I'll", "l'II",
 #        "l'Il", "l'lI", "l'll".
@@ -74,6 +84,12 @@ I'll
 # match patterns.
 ^\[([A-Za-z])
 I \1
+
+# Match: "l' "
+# Replace with: "I'll"
+# Note: avoid accidentally matching the French "l'" as in "l'accident"
+\bl'( )
+I'll\1
 
 # Match: "l" as a word, at the end of a line
 # Replace with: "I"

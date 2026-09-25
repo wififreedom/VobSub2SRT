@@ -126,7 +126,7 @@ OCRSubtitle::write_srt(
     adjusted_end_pts = next_start_pts_opt.value();
   }
 
-  if (base_duration > 0) {
+  if (base_duration > 0 && chars_per_sec > 0) {
     // 90 = 1 msec, 90000 = 1 sec
     const uint32_t calc =
       (90 * base_duration) +

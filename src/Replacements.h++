@@ -60,21 +60,15 @@ public:
     std::string priv_replacement_pattern;
   };
 
-  Replacements(
-      const std::string& file_name)
-      : file_name(file_name) {
-  }
-
   void
-  read();
+  read(
+      const std::string& file_name);
 
   std::string
   replace(
       const std::string& src) const;
 
 private:
-  std::string file_name;
-
   std::vector<Replacement> repl_vec;
 };
 
