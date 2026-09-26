@@ -4,6 +4,7 @@
  *
  *  Copyright (C) 2010-2016 Rüdiger Sonderfeld <ruediger@c-plusplus.de>
  *  Copyright (C) 2026 Christopher Ogloff <chris.ogloff@gmail.com>
+ *  Copyright (C) 2026 Bastiaan Stougie <wififreedom2026@protonmail.com>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -55,6 +56,8 @@ process_sub(
     const std::string& tess_lang_user,
     const std::string& tess_blacklist,
     const std::string& tess_dpi,
+    const unsigned min_width,
+    const unsigned min_height,
     const std::size_t ocr_batch_size,
     const Replacements& replacements,
     const bool detect_italic,
@@ -207,6 +210,16 @@ process_sub(
 	continue;
       }
 
+      if (sp_width < min_width || sp_height < min_height) {
+	std::cerr << "WARNING: " << sub_counter << ": image too small" <<
+	  ", size: " << sp_image_size << " bytes" <<
+	  ", " << sp_width << "x" << sp_height << " pixels" <<
+	  ", require at least " <<
+	  ", " << min_width << "x" << min_height << " pixels" <<
+	  ": skipping" << std::endl;
+        continue;
+      }
+
       if (verbosity and static_cast<unsigned>(timestamp) != start_pts) {
 	std::cerr << sub_counter << ": time stamp from .idx (" << timestamp
 		  << ") doesn't match time stamp from .sub ("
@@ -290,6 +303,8 @@ main2(int argc, char **argv) {
   std::string tess_data_dir;
   std::string tess_dpi = "72";
   int y_threshold = 16;
+  unsigned min_width = 1;
+  unsigned min_height = 1;
   std::size_t ocr_batch_size = 20;
   std::vector<std::string> replacements_file_name_vec;
   bool detect_italic = false;
@@ -315,8 +330,10 @@ main2(int argc, char **argv) {
       add_option("tesseract-lang", tess_lang_user, "Desired Tesseract language (e.g. eng, deu, fra, esp, eng+fra)\n\t\t\t\t(Default: autodetect)").
       add_option("tesseract-data", tess_data_dir, "Path to Tesseract data (e.g. you have tessdata_best and wish to\n\t\t\t\tuse it. Default: autodetect)").
       add_option("dpi", tess_dpi, "Set DPI for Tesseract OCR. Default: 72.").
-      add_option("tess_blacklist", tess_blacklist, "Character blacklist to improve the OCR (e.g. \"|\\/`_~<>\").").
+      add_option("blacklist", tess_blacklist, "Character blacklist to improve the OCR (e.g. \"|\\/`_~<>\").").
       add_option("y-threshold", y_threshold, "Y (luminance) threshold below which colors treated as black. Default: 16.").
+      add_option("min-width", min_width, "Minimum width in pixels to consider a subtitle picture for OCR (Default: 1)").
+      add_option("min-height", min_height, "Minimum height in pixels to consider a subtitle picture for OCR (Default: 1)").
       add_option("ocr-batch-size", batch_size, "Perform OCR on combined images. Can fix empty or inaccurate OCR results.\n\t\t\t\tDefault: 20.").
       add_option("replacements", replacements_file_name_vec, "Immediately after OCR, apply replacements defined in the specified file(s).\n\t\t\t\tOption can be specified multiple times.").
       add_option("detect-italic", detect_italic, "Detect italic. Add <i> and </i> to the output where applicable.").
@@ -373,6 +390,8 @@ main2(int argc, char **argv) {
 	tess_lang_user,
 	tess_blacklist,
 	tess_dpi,
+	min_width,
+	min_height,
 	ocr_batch_size,
 	replacements,
 	detect_italic,

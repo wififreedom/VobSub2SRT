@@ -4,6 +4,7 @@
 #  Bash completions for vobsub2srt(1).
 #
 #  Copyright (C) 2010-2016 Rüdiger Sonderfeld <ruediger@c-plusplus.de>
+#  Copyright (C) 2026 Bastiaan Stougie <wififreedom2026@protonmail.com>
 #
 #  This program is free software: you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -26,6 +27,10 @@ _vobsub2srt() {
     _get_comp_words_by_ref cur prev
 
     case $prev in
+        --dump-images|--debug-images)
+	    COMPREPLY=( $(bmp dib exr hdr jp2 jpeg jpg jpe pbm pgm pic png ppm pxm pnm sr ras tif tiff webp) )
+	    return 0;
+	    ;;
         --ifo)
             _filedir '(ifo|IFO)'
             return 0
@@ -36,6 +41,10 @@ _vobsub2srt() {
             COMPREPLY=( $( compgen -W "$tmp" -- "$cur" ) )
             return 0
             ;;
+	--replacements)
+            _filedir '(txt)'
+	    return 0
+	    ;;
         --tesseract-data)
             _filedir -d
             return 0
@@ -44,7 +53,7 @@ _vobsub2srt() {
 
     case $cur in
         -*)
-            COMPREPLY=( $( compgen -W '--dump-images --verbose --ifo --lang --langlist --tesseract-lang --tesseract-data --blacklist --y-threshold --min-width --min-height' -- "$cur" ) )
+            COMPREPLY=( $( compgen -W '--show --dump-images --debug --debug-number --debug-images --verbose --ifo --index --lang --langlist --tesseract-lang --tesseract-data --dpi --blacklist --y-threshold --ocr-batch-size --replacements --detect-italic --base-duration --chars-per-sec' -- "$cur" ) )
             ;;
         *)
             _filedir '(idx|IDX|sub|SUB)'

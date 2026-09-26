@@ -2,48 +2,57 @@
 .SH NAME
 vobsub2srt \- converts vobsub (.idx/.sub) into .srt subtitles
 .SH SYNOPSIS
-\fBvobsub2srt\fR [\fIOPTION\fR] \fIFILENAME\fR
+\fBvobsub2srt\fR [\fIOPTION\fR] \fIFILENAME...\fR
 .SH DESCRIPTION
 .PP
 vobsub2srt converts subtitles in vobsub (.idx/.sub) format into the .srt format.  VobSub subtitles contain images and srt is a text format.
 OCR is used to extract the text from the subtitles.  vobsub2srt uses tesseract for OCR and is based on code from the MPlayer project.
 .SH OPTIONS
 .TP
-\fIFILENAME\fR
-File name of the subtitles \fBWITHOUT\fR the .idx or .sub extension. The .srt subtitles are written to a file called \fIFILENAME\fR.srt.
-.TP
-\fB\-\-dump\-pgm\fR
-Extract the subtitles as NetPBM PGM images (format \fIFILENAME\fR-\fINUMBER\fR.pgm in PGM format). (Obsolete)
-.TP
-\fB\-\-dump\-png\fR
-Extract the subtitles to sequential PNG files.
+\fIFILENAME...\fR
+File name of one of the subtitle files with or without the .idx or .sub extension. vobsub2srt will find both files.  The .srt subtitles are written to a file called \fIFILENAME\fR.srt.  Multiple FILENAME arguments can be specified.
 .TP
 \fB\-\-show\fR
-Print text output to terminal (stdout).
+For each subtitle line, print the unmodified OCR result to the terminal (stdout).
 .TP
-\fB\-\-verbose\fR
-Print verbose information about the subtitle decoding process.
+\fB\-\-dump-images extension\fR
+Extract the subtitle images to files with file name format "\fIFILENAME\fR-\fINUMBER\fR.\fIEXTENSION\fR)".
 .TP
-\fB\-\-lang\fR \fIlanguage\fR
-Select the language of the subtitle (two letter ISO 639-1 code e.g. en for English or de for German).
-Use \fI--langlist\fR to see the languages in the subtitle file.
+\fB\-\-debug\fR
+Write all kinds of debug info to standard error.
 .TP
-\fB\-\-langlist\fR
-List languages and exit.
+\fB\-\-debug-number number\fR
+Write all kinds of debug info to standard error, for a specific subtitle number.
 .TP
-\fB\-\-index\fR \fIindex\fR
-The index of the subtitle to convert.  Use this instead \fI--lang\fR if there are several streams with the same language.
-Combining \fI--lang\fR and \fI--index\fR does not work!
+\fB\-\-debug-images extension\fR
+Also write debug images for options --debug and --debug-number with file name format "\fIFILENAME\fR-\fISUBTITLE_NUMBER\fR-\fILINE_NUMBER\fR-*.\fIEXTENSION\fR)".
+.TP
+\fB\-\-verbose level\fR
+Print verbose information about the subtitle decoding process. Levels 0 to 2.
 .TP
 \fB\-\-ifo\fR \fIifo-file\fR
 To use a specific IFO file. Default: \fIFILENAME\fR.IFO is tried. IFO file is optional!
 .TP
+\fB\-\-index\fR \fIindex\fR
+The index of the subtitle to convert.  Use this instead \fI--lang\fR if there are several streams with the same language.
+Combining \fI--lang\fR and \fI--index\fR is not supported.
+.TP
+\fB\-\-lang\fR \fIlanguage\fR
+The subtitles files can contain multiple subtitle tracks.
+Select the language of the subtitle track to convert (two letter ISO 639-1 code, e.g. "en" for English or "de" for German).
+Use \fI--langlist\fR to see the languages in the subtitle file.
+Combining \fI--lang\fR and \fI--index\fR is not supported.
+.TP
+\fB\-\-langlist\fR
+List languages and exit.
+.TP
 \fB\-\-tesseract-lang\fR \fIlanguage\fR
 Set the language to be used by Tesseract.  This is auto detected and normally does not need to be changed.
 If however you need special language settings (e.g., deu-frak, chi_sim, chi_tra) use this option.
+Tesseract can use multiple languages at the same time, for example "eng+fra".
 .TP
 \fB\-\-tesseract-data\fR \fIpath\fR
-Set path to Tesseract data. (e.g. /usr/share/tessdata_best, otherwise auto-detect standard Tesseract data)
+Set path to Tesseract data.  For example: "/usr/share/tesseract-ocr/5/tessdata-best".  Otherwise auto-detect standard Tesseract data.
 .TP
 \fB\-\-blacklist\fR \fIblacklist\fR
 Blacklist characters for OCR (e.g. |\\/`_~<>)
@@ -52,28 +61,83 @@ Blacklist characters for OCR (e.g. |\\/`_~<>)
 Y (luminance) threshold below which colors treated as black (Default: 16).
 .TP
 \fB\-\-min-width\fR \fIwidth\fR
-Minimum width in pixels to consider a subpicture for OCR (Default: 8).
+Minimum width in pixels to consider a subpicture for OCR.
+Default value: 1.
 .TP
 \fB\-\-min-height\fR \fIheight\fR
-Minimum height in pixels to consider a subpicture for OCR (Default: 1).
+Minimum height in pixels to consider a subpicture for OCR.
+Default value: 1.
+.TP
+\fB\-\-ocr-batch-size\fR
+OCR quality can improve if it has more text to process.
+Some subtitle images have only one character, or only a few characters.
+With one character, OCR regularly does not recognize anything, or has no way to distinguish between an uppercase or lowercase alphabetical character.
+With a few characters to process, sometimes OCR also does not recognize anything, or the result isn't good.
+To overcome this problem, vobsub2srt can combine lines of text from several subtitle images into a single image, then process that combined image.
+This option specifies how many subtitle images to combine into one.
+Tesseract has a limit to the image size it can process, so large values may not work.
+20 seems a sufficiently large and safe value.
+Default value: 20.
+.TP
+\fB\-\-replacements replacements-file\fR
+Immediately after OCR, apply the replacements specified in replacements-file.
+This option can be specified multiple times to use replacements from several files, for example to use replacements for several languages that are stored in separate files.
+The source code repository contains example replacements files.
+.TP
+\fB\-\-detect-italic\fR
+Detect italic text, and add <i> and </i> tags to the output where deemed applicable.
+Like OCR, this is usually pretty accurate, but can make mistakes.
+.TP
+\fB\-\-base-duration base-duration\fR
+Some subtitle lines can be displayed too long, for example until the next subtitle line is displayed several minutes later.
+vobsub2srt can detect this, and limit the display duration for such subtitles.
+A good way to display subtitles that is pleasant for the viewer, is as follows.  Display them for a base duration in milliseconds, 1500 milliseconds is a good value.  Continue to display them for an additional time period based on the minimum number of characters per second the viewer is to read.  A value of 19 characters per second is considered a good value for adults; the best value also depends on the motion picture.
+As a formula, in milliseconds: base_duration + (1000 * subtitle_length / characters_per_second)
+Unit: milliseconds.
+Default value: 0 (disabled).
+Recommended value: 1500.
+See also \fI--chars-per-sec\fR.
+.TP
+\fB\-\-chars-per-sec\fR \fIchars-per-sec\fR
+See \fI--base-duration\fR for details.
+The number of characters per second the viewer is to read.
+Values closer to 15 are typically used for children. Values around 20 are typically used for adults.
+Default value: 19.
+Recommended value: 15..20.
 .SH EXAMPLES
 .nf
   $ \fBvobsub2srt \-\-show foobar\fR
 .fi
 Prints the subtitles as they are passed through OCR.\fR
+
 .nf
   $ \fBvobsub2srt \-\-lang en foobar\fR
 .fi
 Converts the English language subtitles from the VobSub files \fIfoobar.idx\fR/\fIfoobar.sub\fR to srt subtitles in \fIfoobar.srt\fR.
+
+.nf
+  $ \fBvobsub2srt foobar\fR
+  $ \fBvobsub2srt foobar.idx\fR
+  $ \fBvobsub2srt foobar.sub\fR
+.fi
+These commands are equivalent.
+
 .nf
   $ \fBvobsub2srt \-\-lang zh \-\-tesseract-lang chi_sim foobar\fR
 .fi
 Converts the chinese language subtitles using simplified chinese (chi_sim) characters.
 
+.nf
+  $ \fBvobsub2srt \-\-verbose 1 \-\-tesseract-lang 'eng+fra' \-\-replacements replacements_EN.txt \-\-replacements replacements_FR.txt \-\-detect-italic \-\-base-duration 1500 \-\-chars-per-sec 19 *.idx\fR
+.fi
+Converts subtitles to text for all .idx+.sub files in the current direcory, with OCR languages English and French, performs replacements from files replacements_EN.txt and replacements_FR.txt on the text, performs italic detection and adds <i> and </i> tags where applicable, limits the maximum time duration subtitle lines are displayed on screen to 1500 milliseconds + (1000 * number of characters / 19) milliseconds, and writes the corresponding *.srt files, displaying verbose information about the process on standard error.
+
 .SH HOMEPAGE
-For more information see \fIhttps://github.com/csingleplus/VobSub2SRT\fR.
+For more information see \fIhttps://github.com/wififreedom/VobSub2SRT\fR.
+Modified VobSub2SRT code available at \fIhttps://github.com/csingleplus/VobSub2SRT\fR.
 Original VobSub2SRT code available at \fIhttps://github.com/ruediger/VobSub2SRT\fR.
 
 .SH AUTHORS
 R\[:u]diger Sonderfeld <\fIruediger -AT- c-plusplus -DOT- de\fR>
 Christopher Ogloff <\fIchris.ogloff@gmail.com\fR> \fIhttps://github.com/csingleplus\fR
+Bastiaan Stougie <\fIwififreedom2026 -AT- protonmail -DOT- com\fR> \fIhttps://github.com/wififreedom\fR

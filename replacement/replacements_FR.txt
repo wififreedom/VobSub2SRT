@@ -16,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 # Replacements for use with vobsub2srt command line option --replacements,
-# to correct common OCR mistakes for person names.
+# to correct common OCR mistakes for language: French.
 
 # Regular expression format is Modified ECMAScript
 #
@@ -64,7 +64,6 @@
 #
 ecmascript
 
-\bFrancois(e?)\b
-François\1
-
+\ba la\b
+à la
 
