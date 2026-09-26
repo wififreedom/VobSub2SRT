@@ -31,6 +31,7 @@ struct cmd_options {
   cmd_options &add_option(char const *name, bool &val, char const *description, char short_name = '\0');
   cmd_options &add_option(char const *name, std::string &val, char const *description, char short_name = '\0');
   cmd_options &add_option(char const *name, int &val, char const *description, char short_name = '\0');
+  cmd_options &add_option(char const *name, unsigned &val, char const *description, char short_name = '\0');
   cmd_options &add_option(const char* name, std::vector<std::string>& val, const char* description, char short_name = '\0');
 
   cmd_options &add_unnamed(std::string &val, char const *help_name, char const *description);

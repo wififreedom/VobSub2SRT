@@ -188,7 +188,8 @@ OCRSubtitles::append(
 void
 OCRSubtitles::do_ocr(
     tesseract::TessBaseAPI& tess_base_api,
-    const std::size_t ocr_batch_size) {
+    const std::size_t ocr_batch_size,
+    const bool show) {
 
   // TODO: more consistent number of lines per image, not number of subtitles
   const std::size_t batch_size = ocr_batch_size > 0 ? ocr_batch_size : 1;
@@ -277,7 +278,7 @@ OCRSubtitles::do_ocr(
     }
 
     // now do ocr.
-    batch_ocr(tess_base_api, combined_img, batch_i, batch_end_i);
+    batch_ocr(tess_base_api, combined_img, batch_i, batch_end_i, show);
   }
 }
 
@@ -372,14 +373,12 @@ void
 OCRSubtitles::write_srt(
     std::ostream& os,
     const int base_duration,
-    const int chars_per_sec,
-    const bool show) {
+    const int chars_per_sec) {
   for (std::size_t i = 0; i < subtitle_vec.size(); i++) {
     subtitle_vec[i].write_srt(
 	os,
 	base_duration,
 	chars_per_sec,
-	show,
 	((i + 1) < subtitle_vec.size()) ? 
 	  std::optional(subtitle_vec[i + 1].start_pts_get()) : std::nullopt);
   }
@@ -413,7 +412,8 @@ OCRSubtitles::batch_ocr(
     tesseract::TessBaseAPI& tess_base_api,
     const cv::Mat& combined_img,
     const std::size_t batch_i,
-    const std::size_t batch_end_i) {
+    const std::size_t batch_end_i,
+    const bool show) {
 
   tess_base_api.SetPageSegMode(tesseract::PSM_SINGLE_BLOCK);
   tess_base_api.SetImage(
@@ -543,6 +543,11 @@ OCRSubtitles::batch_ocr(
 	      si.combined_line_bbox_vec[line_vec.size()],
 	      word_bbox_vec,
 	      symbol_bbox_vec);
+
+	  if (show) {
+	    std::cout << "Subtitle " << (si_i + 1) << ": ";
+	    line_vec.back().write(std::cout);
+	  }
 
 	  if (line_vec.size() == si.combined_line_bbox_vec.size()) {
 	    subtitle_vec.emplace_back(

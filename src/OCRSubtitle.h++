@@ -70,7 +70,6 @@ public:
       std::ostream& os,
       const int base_duration,
       const int chars_per_sec,
-      const bool show,
       const std::optional<uint32_t> next_start_pts_opt);
 
 private:

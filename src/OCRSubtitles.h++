@@ -68,7 +68,8 @@ public:
   void
   do_ocr(
       tesseract::TessBaseAPI& tess_base_api,
-      const std::size_t ocr_batch_size);
+      const std::size_t ocr_batch_size,
+      bool const show);
 
   void
   correct_ocr(
@@ -81,8 +82,7 @@ public:
   write_srt(
       std::ostream& os,
       const int base_duration,
-      const int chars_per_sec,
-      const bool show);
+      const int chars_per_sec);
 
   void
   bboxes_assign(
@@ -101,7 +101,8 @@ private:
       tesseract::TessBaseAPI& tess_base_api,
       const cv::Mat& combined_img,
       const std::size_t batch_i,
-      const std::size_t batch_end_i);
+      const std::size_t batch_end_i,
+      bool const show);
 
   std::ostream&
   write(

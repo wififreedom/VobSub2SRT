@@ -116,7 +116,6 @@ OCRSubtitle::write_srt(
     std::ostream& os,
     const int base_duration,
     const int chars_per_sec,
-    const bool show,
     const std::optional<uint32_t> next_start_pts_opt) {
 
   uint32_t adjusted_end_pts = end_pts;
@@ -141,10 +140,6 @@ OCRSubtitle::write_srt(
   write_pts(os, end_pts) << std::endl;
 
   for (const auto& it : line_vec) {
-    if (show) {
-      std::cout << "Subtitle " << subtitle_number << ": ";
-      it.write_srt(std::cout);
-    }
     it.write_srt(os);
   }
   os << std::endl;

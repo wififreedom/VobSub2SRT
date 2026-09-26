@@ -28,11 +28,12 @@
 
 namespace {
 struct option {
-  enum arg_type { Bool, String, Int, StringVec } type;
+  enum arg_type { Bool, String, Int, Unsigned, StringVec } type;
   union {
     bool *flag;
     std::string *str;
     int *i;
+    unsigned *u;
     std::vector<std::string> *str_vec;
   } ref;
   char const *name;
@@ -52,6 +53,9 @@ struct option {
       break;
     case Int:
       ref.i = reinterpret_cast<int*>(&r);
+      break;
+    case Unsigned:
+      ref.u = reinterpret_cast<unsigned*>(&r);
       break;
     case StringVec:
       ref.str_vec = reinterpret_cast<std::vector<std::string>*>(&r);
@@ -108,7 +112,10 @@ cmd_options &cmd_options::add_option(char const *name, int &val, char const *des
   pimpl->options.push_back(option(name, option::Int, val, description, short_name));
   return *this;
 }
-
+cmd_options &cmd_options::add_option(char const *name, unsigned &val, char const *description, char short_name) {
+  pimpl->options.push_back(option(name, option::Unsigned, val, description, short_name));
+  return *this;
+}
 cmd_options &cmd_options::add_option(const char* name, std::vector<std::string>& val_vec, const char* description, char short_name) {
   pimpl->options.push_back(option(name, option::StringVec, val_vec, description, short_name));
   return *this;
@@ -163,9 +170,20 @@ bool cmd_options::parse_cmd(int argc, char **argv) const {
           }
           else if(j->type == option::Int) {
             char *endptr;
-            *j->ref.i = strtol(argv[i], &endptr, 10);
+            *j->ref.i = std::strtol(argv[i], &endptr, 10);
             if(*endptr != '\0') {
 	      std::cerr << "option " << argv[i] << " expects a number as argument but got '" << argv[i] << "'\n";
+              exit = true;
+              return false;
+            }
+          }
+          else if (j->type == option::Unsigned) {
+            char *endptr;
+            *j->ref.u = std::strtoul(argv[i], &endptr, 10);
+            if (*endptr != '\0') {
+	      std::cerr << "option " << argv[i] << " expects a number " <<
+	       	"greater than or equal to 0 as argument but got " << 
+		"'" << argv[i] << "'\n";
               exit = true;
               return false;
             }
@@ -235,7 +253,12 @@ void cmd_options::help(char const *progname) const {
   }
 */
   for(std::vector<unnamed>::const_iterator i = pimpl->unnamed_args.begin(); i != pimpl->unnamed_args.end(); ++i) {
-    std::cerr << " <" << i->name << '>' << "\t\t\tname of subtitle without .idx/.sub extension";
+    const std::string arg = std::string("  <") + i->name + ">";
+    std::cerr << std::left << std::setw(32) << arg << i->description << '\n';
+  }
+  if (pimpl->unnameds_opt.has_value()) {
+    const std::string arg = std::string("  <") + pimpl->unnameds_opt->name + ">...";
+    std::cerr << std::left << std::setw(32) << arg << pimpl->unnameds_opt->description << '\n';
   }
   std::cerr << "\n\n";
   /*
