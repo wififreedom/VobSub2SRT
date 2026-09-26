@@ -21,6 +21,7 @@
 #define CMD_OPTIONS_HXX
 
 #include <string> // string_fwd in C++0x
+#include <vector>
 
 /// Handle argc/argv
 struct cmd_options {
@@ -30,8 +31,10 @@ struct cmd_options {
   cmd_options &add_option(char const *name, bool &val, char const *description, char short_name = '\0');
   cmd_options &add_option(char const *name, std::string &val, char const *description, char short_name = '\0');
   cmd_options &add_option(char const *name, int &val, char const *description, char short_name = '\0');
+  cmd_options &add_option(const char* name, std::vector<std::string>& val, const char* description, char short_name = '\0');
 
   cmd_options &add_unnamed(std::string &val, char const *help_name, char const *description);
+  cmd_options &add_unnameds(std::vector<std::string>& val, const char* help_name, const char* description);
 
   bool parse_cmd(int argc, char **argv) const;
 

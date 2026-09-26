@@ -40,21 +40,6 @@
 
 #include <opencv2/imgcodecs.hpp>
 
-static void
-split(
-    const std::string& src,
-    const char delimiter,
-    std::vector<std::string>& dst) {
-  std::size_t begin = 0;
-  for (std::size_t i = 0; i < src.size(); i++) {
-    if (src[i] == delimiter) {
-      dst.emplace_back(src, begin, i - begin);
-      begin = i + 1;
-    }
-  }
-  dst.emplace_back(src, begin, src.size() - begin);
-}
-
 int
 main2(int argc, char **argv) {
   bool show = false;
@@ -71,7 +56,7 @@ main2(int argc, char **argv) {
   int index = -1;
   int y_threshold = 16;
   std::size_t ocr_batch_size = 20;
-  std::string replacements_file_names;
+  std::vector<std::string> replacements_file_name_vec;
   bool detect_italic = false;
   int base_duration = 0;
   int chars_per_sec = 19;
@@ -97,7 +82,7 @@ main2(int argc, char **argv) {
       add_option("blacklist", blacklist, "Character blacklist to improve the OCR (e.g. \"|\\/`_~<>\")").
       add_option("y-threshold", y_threshold, "Y (luminance) threshold below which colors treated as black (Default: 16)").
       add_option("ocr-batch-size", batch_size, "Perform OCR on combined images. Can fix empty or inaccurate OCR results. (Default: 20).").
-      add_option("replacements", replacements_file_names, "Immediately after OCR, apply replacements defined in the specified file(s), file names separated by '+'.").
+      add_option("replacements", replacements_file_name_vec, "Immediately after OCR, apply replacements defined in the specified file(s). Option can be specified multiple times.").
       add_option("detect-italic", detect_italic, "Detect italic. Add <i> and </i> to the output where applicable.").
       add_option("base-duration", base_duration, "Max subtitle display duration (msec) = base_duration + 1000 * subtitle_length_in_chars / chars_per_sec (Default: 0 = disable, recommended: 1500)").
       add_option("chars-per-sec", chars_per_sec, "See --base-duration (Default: 19, recommended: 15..20).");
@@ -128,12 +113,11 @@ main2(int argc, char **argv) {
   // Read the replacements file first, to immediately report syntax errors in
   // the file, instead of after OCR has finished.
   Replacements replacements;
-  {
-    std::vector<std::string> replacements_file_name_vec;
-    split(replacements_file_names, '+', replacements_file_name_vec);
-    for (const auto& it : replacements_file_name_vec) {
-      replacements.read(it);
+  for (const auto& it : replacements_file_name_vec) {
+    if (verbose) {
+      std::cerr << "Reading replacements from '" << it << "'" << std::endl;
     }
+    replacements.read(it);
   }
 
   OCRSubtitles subtitles(subname);
@@ -322,7 +306,7 @@ main2(int argc, char **argv) {
   }
   subtitles.do_ocr(tess_base_api, ocr_batch_size);
 
-  if (!replacements_file_names.empty()) {
+  if (!replacements_file_name_vec.empty()) {
     if (verbose) {
       std::cerr << "Performing replacements" << std::endl;
     }

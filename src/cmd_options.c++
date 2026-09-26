@@ -24,15 +24,16 @@
 #include <cstdlib>
 #include <vector>
 #include <string>
-using namespace std;
+#include <optional>
 
 namespace {
 struct option {
-  enum arg_type { Bool, String, Int } type;
+  enum arg_type { Bool, String, Int, StringVec } type;
   union {
     bool *flag;
     std::string *str;
     int *i;
+    std::vector<std::string> *str_vec;
   } ref;
   char const *name;
   char const *description;
@@ -52,6 +53,9 @@ struct option {
     case Int:
       ref.i = reinterpret_cast<int*>(&r);
       break;
+    case StringVec:
+      ref.str_vec = reinterpret_cast<std::vector<std::string>*>(&r);
+      break;
     }
   }
 };
@@ -65,11 +69,21 @@ struct unnamed {
   { }
 };
 
+struct unnameds {
+  std::vector<std::string> *str_vec;
+  const char* name;
+  const char* description;
+  unnameds(std::vector<std::string>& sv, const char* name, const char* description)
+    : str_vec(&sv), name(name), description(description)
+  { }
+};
+
 }
 
 struct cmd_options::impl {
   std::vector<option> options;
   std::vector<unnamed> unnamed_args;
+  std::optional<unnameds> unnameds_opt;
 };
 
 cmd_options::cmd_options(bool handle_help)
@@ -95,8 +109,18 @@ cmd_options &cmd_options::add_option(char const *name, int &val, char const *des
   return *this;
 }
 
+cmd_options &cmd_options::add_option(const char* name, std::vector<std::string>& val_vec, const char* description, char short_name) {
+  pimpl->options.push_back(option(name, option::StringVec, val_vec, description, short_name));
+  return *this;
+}
+
 cmd_options &cmd_options::add_unnamed(std::string &val, char const *help_name, char const *description) {
   pimpl->unnamed_args.push_back(unnamed(val, help_name, description));
+  return *this;
+}
+
+cmd_options &cmd_options::add_unnameds(std::vector<std::string>& val_vec, const char* help_name, const char* description) {
+  pimpl->unnameds_opt = unnameds(val_vec, help_name, description);
   return *this;
 }
 
@@ -128,7 +152,7 @@ bool cmd_options::parse_cmd(int argc, char **argv) const {
           }
 
           if(i+1 >= argc or argv[i+1][0] == '-') { // Check if next argv is an option or argument
-            cerr << "option " << argv[i] << " is missing an argument\n";
+	    std::cerr << "option " << argv[i] << " is missing an argument\n";
             exit = true;
             return false;
           }
@@ -141,22 +165,28 @@ bool cmd_options::parse_cmd(int argc, char **argv) const {
             char *endptr;
             *j->ref.i = strtol(argv[i], &endptr, 10);
             if(*endptr != '\0') {
-              cerr << "option " << argv[i] << " expects a number as argument but got '" << argv[i] << "'\n";
+	      std::cerr << "option " << argv[i] << " expects a number as argument but got '" << argv[i] << "'\n";
               exit = true;
               return false;
             }
           }
+	  else if (j->type == option::StringVec) {
+	    j->ref.str_vec->emplace_back(argv[i]);
+	  }
           break;
         }
       }
       if(not known_option) {
-        cerr << "ERROR: unknown option '" << argv[i] << "'\n";
+	std::cerr << "ERROR: unknown option '" << argv[i] << "'\n";
         help(argv[0]);
       }
     }
     else if(pimpl->unnamed_args.size() > current_unnamed) {
       *pimpl->unnamed_args[current_unnamed].str = argv[i];
       ++current_unnamed;
+    }
+    else if (pimpl->unnameds_opt.has_value()) {
+      pimpl->unnameds_opt.value().str_vec->emplace_back(argv[i]);
     }
     else {
       help(argv[0]);
@@ -166,65 +196,65 @@ bool cmd_options::parse_cmd(int argc, char **argv) const {
 }
 
 void cmd_options::help(char const *progname) const {
-  cerr << "Usage:\n"
+  std::cerr << "Usage:\n"
        << "  " << progname << " [options]";
   for(std::vector<unnamed>::const_iterator i = pimpl->unnamed_args.begin(); i != pimpl->unnamed_args.end(); ++i) {
-    cerr << " <" << i->name << '>';
+    std::cerr << " <" << i->name << '>';
   }
-  cerr << "\n\n";
+  std::cerr << "\n\n";
   /*
-  cerr << "usage: " << progname;
+  std::cerr << "usage: " << progname;
   for(std::vector<option>::const_iterator i = pimpl->options.begin(); i != pimpl->options.end(); ++i) {
-    cerr << " --" << i->name;
+    std::cerr << " --" << i->name;
   }
   */
-  cerr << "Options:\n";
-for(std::vector<option>::const_iterator i = pimpl->options.begin(); i != pimpl->options.end(); ++i) {
-  std::string opt = "  --";
-  opt += i->name;
+  std::cerr << "Options:\n";
+  for(std::vector<option>::const_iterator i = pimpl->options.begin(); i != pimpl->options.end(); ++i) {
+    std::string opt = "  --";
+    opt += i->name;
 
-  if(i->type != option::Bool) {
-    opt += " <arg>";
+    if(i->type != option::Bool) {
+      opt += " <arg>";
+    }
+
+    if(i->short_name != '\0') {
+      opt += " (-";
+      opt += i->short_name;
+      opt += ")";
+    }
+
+    std::cerr << std::left << std::setw(32) << opt << i->description << '\n';
   }
 
-  if(i->short_name != '\0') {
-    opt += " (-";
-    opt += i->short_name;
-    opt += ")";
+  if(handle_help) {
+  //  std::cerr << std::left << std::setw(32) << "  --help (-h)" << "show help information\n";
   }
-
-  cerr << left << setw(32) << opt << i->description << '\n';
-}
-
-if(handle_help) {
-  //  cerr << left << setw(32) << "  --help (-h)" << "show help information\n";
-}
 /*
   if(handle_help) {
-    cerr << " --help";
+    std::cerr << " --help";
   }
 */
   for(std::vector<unnamed>::const_iterator i = pimpl->unnamed_args.begin(); i != pimpl->unnamed_args.end(); ++i) {
-    cerr << " <" << i->name << '>' << "\t\t\tname of subtitle without .idx/.sub extension";
+    std::cerr << " <" << i->name << '>' << "\t\t\tname of subtitle without .idx/.sub extension";
   }
-  cerr << "\n\n";
+  std::cerr << "\n\n";
   /*
   for(std::vector<option>::const_iterator i = pimpl->options.begin(); i != pimpl->options.end(); ++i) {
-    cerr << "\t--" << i->name;
+    std::cerr << "\t--" << i->name;
     if(i->type != option::Bool) {
-      cerr << " <arg>";
+      std::cerr << " <arg>";
     }
     if(i->short_name != '\0') {
-      cerr << " (or -" << i->short_name << ')';
+      std::cerr << " (or -" << i->short_name << ')';
     }
-    cerr << "\t" << i->description << '\n';
+    std::cerr << "\t" << i->description << '\n';
   }
   
   if(handle_help) {
-    //    cerr << "\t--help (or -h)\tshow help information\n";
+    //    std::cerr << "\t--help (or -h)\tshow help information\n";
   }
   for(std::vector<unnamed>::const_iterator i = pimpl->unnamed_args.begin(); i != pimpl->unnamed_args.end(); ++i) {
-    cerr << "\t<" << i->name << ">\t" << i->description << '\n';
+    std::cerr << "\t<" << i->name << ">\t" << i->description << '\n';
   }
   */
   exit = true;
