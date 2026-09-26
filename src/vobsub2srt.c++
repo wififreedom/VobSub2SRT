@@ -73,21 +73,21 @@ main2(int argc, char **argv) {
       add_option("debug-images", debug_ext, "Also write debug images for options --debug and --debug-number (pgm, png, ...).").
       add_option("verbose", verb, "Decoder verbosity, a value of 1 or 2.").
       add_option("ifo", ifo_file, "Name of the IFO file. Default: tries to open <subname>.ifo(case insensitive).\n\t\t\t\tIFO file is optional but may fix empty palette issues!").
-      add_option("lang", lang, "Language to select", 'l').
-      add_option("langlist", list_languages, "List languages and exit").
-      add_option("index", index, "Subtitle index", 'i').
+      add_option("index", index, "Subtitle index to select. Incompatible with option --lang.", 'i').
+      add_option("lang", lang, "Subtitle language to select. Incomaptible with option --index.", 'l').
+      add_option("langlist", list_languages, "List subtitle languages present in the .idx/.sub files and exit").
       add_option("tesseract-lang", tess_lang_user, "Desired Tesseract language (e.g. eng, deu, fra, esp, eng+fra)\n\t\t\t\t(Default: autodetect)").
       add_option("tesseract-data", tesseract_user_dir, "Path to Tesseract data (e.g. you have tessdata_best and wish to\n\t\t\t\tuse it. Default: autodetect)").
       add_option("dpi", tess_user_dpi, "Set DPI for Tesseract OCR. Default: 72.").
-      add_option("blacklist", blacklist, "Character blacklist to improve the OCR (e.g. \"|\\/`_~<>\")").
-      add_option("y-threshold", y_threshold, "Y (luminance) threshold below which colors treated as black (Default: 16)").
-      add_option("ocr-batch-size", batch_size, "Perform OCR on combined images. Can fix empty or inaccurate OCR results. (Default: 20).").
-      add_option("replacements", replacements_file_name_vec, "Immediately after OCR, apply replacements defined in the specified file(s). Option can be specified multiple times.").
+      add_option("blacklist", blacklist, "Character blacklist to improve the OCR (e.g. \"|\\/`_~<>\").").
+      add_option("y-threshold", y_threshold, "Y (luminance) threshold below which colors treated as black. Default: 16.").
+      add_option("ocr-batch-size", batch_size, "Perform OCR on combined images. Can fix empty or inaccurate OCR results.\n\t\t\t\tDefault: 20.").
+      add_option("replacements", replacements_file_name_vec, "Immediately after OCR, apply replacements defined in the specified file(s).\n\t\t\t\tOption can be specified multiple times.").
       add_option("detect-italic", detect_italic, "Detect italic. Add <i> and </i> to the output where applicable.").
-      add_option("base-duration", base_duration, "Max subtitle display duration (msec) = base_duration + 1000 * subtitle_length_in_chars / chars_per_sec (Default: 0 = disable, recommended: 1500)").
-      add_option("chars-per-sec", chars_per_sec, "See --base-duration (Default: 19, recommended: 15..20).");
+      add_option("base-duration", base_duration, "Max subtitle display duration (msec) = \n\t\t\t\t  base_duration + 1000 * subtitle_length_in_chars / chars_per_sec\n\t\t\t\tDefault: 0 = disable, recommended: 1500.").
+      add_option("chars-per-sec", chars_per_sec, "See --base-duration. Default: 19, recommended: 15..20.");
 
-    opts.add_unnamed(subname, "subname", "name of the subtitle files without .idx/.sub ending.");
+    opts.add_unnamed(subname, "subname", "Name of one of the .idx/.sub files. Ending .idx/.sub optional.");
     std::cout << "VobSub2SRT version " << version << '\n';
     if(!opts.parse_cmd(argc, argv)) {
       return 0;
@@ -104,6 +104,19 @@ main2(int argc, char **argv) {
       base_duration = 0;
     if (chars_per_sec < 0)
       chars_per_sec = 1;
+
+    if (!lang.empty() && index >= 0) {
+      std::cerr << "Specifiying both --lang and --index not supported.\n";
+      return 1;
+    }
+
+    // cut off .idx or .sub, if present.
+    if (subname.size() >= 4) {
+      const std::string ext = subname.substr(subname.size() - 4, 4);
+      if (ext == ".idx" || ext == ".sub") {
+	subname.resize(subname.size() - 4);
+      }
+    }
   }
 
   if (verb > 0) {
@@ -144,12 +157,6 @@ main2(int argc, char **argv) {
     return 0;
   }
   
-  // Handle stream Ids and language
-  if(!lang.empty() && index >= 0) {
-    std::cerr << "Setting both lang and index not supported.\n";
-    return 1;
-  }
-
   // Default OCR language to eng unless overridden by user or inferred from selected subtitle track.
   char const *tess_lang = tess_lang_user.empty() ? "eng" : tess_lang_user.c_str();
   if(!lang.empty()) {
