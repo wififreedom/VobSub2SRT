@@ -340,53 +340,50 @@ OCRWord::write(
 std::ostream&
 OCRWord::write_srt(
     std::ostream& os,
-    const bool is_first,
     const OCRWord* next,
     bool& in_italic,
     bool& entire_line_is_italic) const {
 
-  // write
-  {
-    for (std::size_t i = 0; i < part_vec.size(); ++i) {
-      const OCRWordPart& part = part_vec[i];
+  for (std::size_t i = 0; i < part_vec.size(); ++i) {
+    const OCRWordPart& part = part_vec[i];
 
-      if (part.is_punct_at_begin) {
-	// don't change italic for this part
-      }
-      else if (part.is_punct_at_end) {
-	break;
-      }
-      else {
-	const bool part_is_italic = CONFIDENT_ITALIC(part.italic_confidence);
-	if (!part_is_italic) {
-	  if (!(is_first && is_minus())) {
-	    entire_line_is_italic = false;
-	  }
-	  if (in_italic) {
-	    os << "</i>";
-	    in_italic = false;
-	  }
+    if (part.is_punct_at_begin) {
+      // don't change italic for this part
+    }
+    else if (part.is_punct_at_end) {
+      break;
+    }
+    else {
+      const bool part_is_italic = CONFIDENT_ITALIC(part.italic_confidence);
+      if (!part_is_italic) {
+	if (!((word_number == 1) &&
+	      (symbol_vec.size() == 1) &&
+	      (symbol_vec[0].utf8_symbol()[0] == '-'))) {
+	  entire_line_is_italic = false;
 	}
-	else if (!in_italic) {
-	  os << "<i>";
-	  in_italic = true;
+	if (in_italic) {
+	  os << "</i>";
+	  in_italic = false;
 	}
       }
-
-      // TODO does the "'" belong to the part before or to
-      // the part after? This can determine if it should be italic or not.
-      // - for "he's", it belongs to the part after
-      // - for "l'accident", it belongs to the part before.
-
-      // write part, including any single quote at the start
-      for (std::size_t j = part.begin_index; j < part.end_index; j++) {
-	symbol_vec[j].write_srt(os);
+      else if (!in_italic) {
+	os << "<i>";
+	in_italic = true;
       }
+    }
+
+    // TODO does the "'" belong to the part before or to
+    // the part after? This can determine if it should be italic or not.
+    // - for "he's", it belongs to the part after
+    // - for "l'accident", it belongs to the part before.
+
+    // write part, including any single quote at the start
+    for (std::size_t j = part.begin_index; j < part.end_index; j++) {
+      symbol_vec[j].write_srt(os);
     }
   }
 
   if (next) {
-    // TODO this should only look at the first part of the next word
     if (in_italic && !CONFIDENT_ITALIC(next->begin_confidence())) {
       os << "</i>";
       in_italic = false;
@@ -984,7 +981,18 @@ OCRWord::dump(std::ostream& os) const {
   write(os) << std::endl;
   os << "    " << part_vec.size() << " parts:" << std::endl;
   for (const auto& it : part_vec) {
-    it.dump(os);
+    os << "      symbols " << it.begin_index << "-" << (it.end_index - 1) << ": ";
+    for (std::size_t i = it.begin_index; i < it.end_index; i++) {
+      symbol_vec[i].write(os);
+    }
+    os << ": ";
+    if (it.is_punct_at_begin) {
+      os << "punct at begin, ";
+    }
+    if (it.is_punct_at_end) {
+      os << "punct at end, ";
+    }
+    os << "ic: " << it.italic_confidence << std::endl;
   }
   os << "    " << symbol_vec.size() << " symbols:" << std::endl;
   for (const auto& it : symbol_vec) {

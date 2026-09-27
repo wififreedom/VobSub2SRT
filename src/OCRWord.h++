@@ -74,11 +74,6 @@ public:
   }
 
   bool
-  is_minus() const {
-    return (symbol_vec.size() == 1) && (symbol_vec[0].utf8_symbol()[0] == '-');
-  }
-
-  bool
   bboxes_assign(
       const cv::Mat& img,
       const std::vector<cv::Rect>& src,
@@ -121,7 +116,6 @@ public:
   std::ostream&
   write_srt(
       std::ostream& os,
-      const bool is_first,
       const OCRWord* next,
       bool& in_italic,
       bool& entire_line_is_italic) const;

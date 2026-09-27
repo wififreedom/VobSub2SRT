@@ -219,7 +219,7 @@ private:
   //       Ordered by x coordinate, ascending, and width, ascending.
   void
   bboxes_get_word_candidates(
-    const cv::Rect word,
+    const cv::Rect& word,
     const std::vector<cv::Rect>& src,
     std::vector<cv::Rect>& dst);
 

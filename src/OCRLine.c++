@@ -523,7 +523,6 @@ OCRLine::write_srt(std::ostream& os) const {
   for (std::size_t i = 0; i < word_vec.size(); i++) {
     word_vec[i].write_srt(
 	os,
-	(i == 0),
 	((i + 1) == word_vec.size()) ? NULL : &(word_vec[i + 1]),
        	in_italic,
        	entire_line_is_italic);
@@ -1141,7 +1140,7 @@ OCRLine::word_bboxes_fill_gaps_and_combine_based_on_spacing(
 
 void
 OCRLine::bboxes_get_word_candidates(
-  const cv::Rect word,
+  const cv::Rect& word,
   const std::vector<cv::Rect>& src,
   std::vector<cv::Rect>& dst) {
 

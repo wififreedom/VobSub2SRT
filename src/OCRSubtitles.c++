@@ -309,11 +309,12 @@ OCRSubtitles::detect_italic() {
   //   - Phase 1: Assign high-confidence bboxes to symbols.
   //     - Iterate over all subtitles: assign only bboxes to symbols if highly
   //       confident that they are correct:
+  //       - correct number of word bboxes for the line
   //       - no invalid word bbox
   //       - no overlapping word bbox,
   //       - no invalid symbol bbox,
-  //       - no overlapping symbol bbox, // TODO
-  //       - all symbol bboxes inside the word bbox, // TODO
+  //       - no overlapping symbol bbox,
+  //       - all symbol bboxes inside the word bbox,
   //       - correct number of symbol bboxes for the number of symbols in 
   //         the word
   //   - Phase 2: build statistics.
