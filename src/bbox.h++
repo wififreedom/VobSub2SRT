@@ -74,10 +74,17 @@ bboxes_stream(
 
 // src : Bboxes, ordered by x coordinate, ascending.
 // dst : indices of bboxes that overlap the previous bbox.
+// at_least_half_a_bbox :
+// - Specify false to include the index of a bbox in dst only if it overlaps
+//   the previous bbox by at least 1 pixel.
+// - Specify true to include the index of a bbox in dst only if it overlaps
+//   the previous bbox by at least 1 pixel, and the overlap amounts to at least
+//   half its width or at least half the width of the previous bbox.
 void
 bboxes_get_overlapping(
   const std::vector<cv::Rect>& src,
-  std::vector<std::size_t>& dst);
+  std::vector<std::size_t>& dst,
+  const bool at_least_half_a_bbox);
 
 bool
 bbox_is_column_white(

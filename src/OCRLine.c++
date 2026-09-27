@@ -673,7 +673,8 @@ OCRLine::symbol_bboxes_fill_gaps(
   // - Add all src bboxes to dst. they may overlap.
   // - Add all src2 bboxes that cover some range that is not covered by any
   //   src bbox.
-  // - Deal with resulting overlap elsewhere.
+  // - Don't deal with resulting overlap in this function, that's for other
+  //   functions to deal with later.
   // - At return elements of dst are in ascending order of cv::Rect.x.
 
   dst.clear();
@@ -1034,11 +1035,10 @@ OCRLine::word_bboxes_improve(
     word_bboxes_remove_invalid(img, tmp, dst, stats);
   }
 
+
   // TODO also remove other types of inaccurate bboxes.
   //      for example: if any of the contour bboxes partially or completely overlap a word bbox,
   //      the word bbox can't be trusted.
-
-  // TODO we can also exclude entire lines if there are issues, for more reliable statistics
 
   if (debug || subtitle_number == debug_subtitle_number) {
     if (subname.size() && debug_ext.size()) {

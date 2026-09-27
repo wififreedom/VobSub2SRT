@@ -67,10 +67,8 @@ OCRWord::bboxes_assign(
       ": OCRWord::bboxes_assign: ";
   };
 
-  // TODO if not stats yet, detect all overlapping. Else,
-  // ignore slight overlaps (often italic).
   std::vector<std::size_t> overl;
-  bboxes_get_overlapping(src, overl);
+  bboxes_get_overlapping(src, overl, stats ? true : false);
 
   if (debug || subtitle_number == debug_subtitle_number) {
     cerr_log() <<

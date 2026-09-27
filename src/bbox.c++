@@ -224,7 +224,8 @@ bboxes_stream(
 void
 bboxes_get_overlapping(
   const std::vector<cv::Rect>& src,
-  std::vector<std::size_t>& dst) {
+  std::vector<std::size_t>& dst,
+  const bool at_least_half_a_bbox) {
 
   dst.clear();
 
@@ -238,9 +239,17 @@ bboxes_get_overlapping(
     // size of overlap: from cr.x to min(pr.x+pr.width, cr.x+cr.width)
     const int overlap = std::min(pr.x + pr.width, cr.x + cr.width) - cr.x;
 
-    // if overlap amounts to at least half of one of the bboxes
-    if (((2 * overlap) >= pr.width) || ((2 * overlap) >= cr.width)) {
-      dst.emplace_back(src_i);
+    if (at_least_half_a_bbox) {
+      // if overlap amounts to at least half of one of the bboxes
+      if (((2 * overlap) >= pr.width) || ((2 * overlap) >= cr.width)) {
+	dst.emplace_back(src_i);
+      }
+    }
+    else {
+      // any overlap
+      if (overlap > 0) {
+	dst.emplace_back(src_i);
+      }
     }
   }
 }

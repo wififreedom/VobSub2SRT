@@ -100,34 +100,48 @@ private:
       const cv::Rect& bbox,
       const bool check_all_columns);
 
+  // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_remove_invalid(
       const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
+  // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_fill_gaps(
       const std::vector<cv::Rect>& src,
       const std::vector<cv::Rect>& src2,
       std::vector<cv::Rect>& dst);
 
+  // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_replace_combined(
       const std::vector<cv::Rect>& src,
       const std::vector<cv::Rect>& src2,
       std::vector<cv::Rect>& dst);
 
   // Not 100% improvement, there may be edge cases, but also does little
-  // harm in the edge cases (symbols will still all be covered).
+  // harm in the edge cases (symbols will still all be covered), and
+  // this can usually be repaired later.
+  //
+  // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_remove_inaccurate_overlapping(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
   // Not 100% improvement, there may be edge cases, but also does little
-  // harm in the edge cases (symbols will still all be covered).
+  // harm in the edge cases (symbols will still all be covered), and
+  // this can usually be repaired later.
+  //
+  // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_remove_overlapped_by_1(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
@@ -136,7 +150,10 @@ private:
   // new issues. So a replacement must be:
   // - either 100% logically deducted correct,
   // - or nearly 100% accurate and not harmful in edge cases.
+  //
+  // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // src and dst can be the same vector without conflict
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_improve(
       const std::string& subname,
       const cv::Mat& img,
@@ -144,25 +161,33 @@ private:
       const std::vector<cv::Rect>& src2, // contour bboxes
       std::vector<cv::Rect>& dst);
 
+  // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_remove_overlapping(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
+  // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_remove_invalid(
       const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst,
-      const TextStats * const stats);
+      const TextStats* const stats);
 
+  // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_remove_too_much_spacing(
       const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst,
       const TextStats& stats);
 
+  // bboxes in src and symbol_src must be ordered by x coordinate, ascending.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_improve(
       const std::string& subname,
       const cv::Mat& img,
@@ -171,10 +196,14 @@ private:
       std::vector<cv::Rect>& dst,
       const TextStats* const stats);
 
+  // bboxes in src and src2 must be ordered by x coordinate, ascending.
   bool word_bboxes_bound_all_symbol_bboxes(
       const std::vector<cv::Rect>& src, // word bboxes
       const std::vector<cv::Rect>& src2); // symbol bboxes
 
+  // bboxes in src and src2 must be ordered by x coordinate, ascending.
+  // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_fill_gaps_and_combine_based_on_spacing(
       const std::vector<cv::Rect>& src,
       const std::vector<cv::Rect>& src2,

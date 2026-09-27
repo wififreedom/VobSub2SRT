@@ -206,12 +206,6 @@ public:
   //   - symbols without a bbox.
   //   - symbols with multiple bboxes
   //
-  // TODO assign and store word bboxes for words that don't have good symbol
-  // bboxes, and:
-  //      - look at rel_dist of first symbol,
-  //      - possibly also at pixels of last symbol, but would need right-side
-  //        rel_dist statistic
-  //
   void
   assign_confidence(
       const cv::Mat& img,
