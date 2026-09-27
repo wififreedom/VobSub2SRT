@@ -67,44 +67,57 @@ OCRWord::bboxes_assign(
       ": OCRWord::bboxes_assign: ";
   };
 
-  std::vector<std::size_t> overl;
-  bboxes_get_overlapping(src, overl, stats ? true : false);
+  // For building statistics (stats == NULL), count a bbox if there is any
+  // overlap, so that we can exclude the symbols of the word from the
+  // statistics by not assigning a bbox to them. This results in higher quality
+  // statistics.
+  //
+  // For italic detection, (stats != NULL), count only if at least half the
+  // width of a bbox is overlapped. A little overlap is expected with italic
+  // characters, but overlap of half the width of a bbox should not happen,
+  // and if it does, it should be repaired.
+  bool const at_least_half_a_bbox = stats ? true : false;
+  std::size_t num_overl = bboxes_get_num_overlapping(src, at_least_half_a_bbox);
 
   if (debug || subtitle_number == debug_subtitle_number) {
     cerr_log() <<
       "num_sym=" << num_ocr_symbols() <<
       ", num_cands=" << src.size() <<
-      ": num_overl=" << overl.size() <<
+      ": num_overl=" << num_overl <<
       std::endl;
   }
 
   if (!stats) {
-    // only assign if high confidence that bboxes are correct
-    if ((overl.size() == 0) && (src.size() == num_ocr_symbols())) {
+    // Assign bboxes for building statistics. Only assign if high confidence
+    // that bboxes are correct.
+    if ((num_overl == 0) && (src.size() == num_ocr_symbols())) {
       return bboxes_assign(src, stats, test_only);
     }
-    else {
-      if (debug || subtitle_number == debug_subtitle_number) {
-	cerr_log() << "no bboxes assigned, need reliable statistics" << std::endl;
-      }
-      return false;
+
+    if (debug || subtitle_number == debug_subtitle_number) {
+      cerr_log() << "no bboxes assigned, need reliable statistics" << std::endl;
     }
   }
+  else {
+    // Assign bboxes, and repair any issues with the bboxes with the help of
+    // the statistics.
+    if (num_overl == 0) {
+      if (src.size() == num_ocr_symbols()) {
+	return bboxes_assign(src, stats, test_only);
+      }
+      else if (src.size() < num_ocr_symbols()) {
+	return bboxes_assign_repair_too_few_bboxes(img, src, *stats, test_only);
+      }
+    }
 
-  if ((overl.size() == 0) && (src.size() == num_ocr_symbols())) {
-    return bboxes_assign(src, stats, test_only);
-  }
-  else if ((overl.size() == 0) && (src.size() < num_ocr_symbols())) {
-    return bboxes_assign_repair_too_few_bboxes(img, src, *stats, test_only);
-  }
-
-  if (debug || subtitle_number == debug_subtitle_number) {
-    cerr_log() <<
-      "num_sym=" << num_ocr_symbols() <<
-      ", num_cands=" << src.size() <<
-      ", num_overl=" << overl.size() <<
-      ": not implemented" <<
-      std::endl;
+    if (debug || subtitle_number == debug_subtitle_number) {
+      cerr_log() <<
+	"num_sym=" << num_ocr_symbols() <<
+	", num_cands=" << src.size() <<
+	", num_overl=" << num_overl <<
+	": not implemented" <<
+	std::endl;
+    }
   }
 
   return false;
