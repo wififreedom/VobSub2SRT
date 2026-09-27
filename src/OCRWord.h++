@@ -35,6 +35,26 @@
 // Other examples: ["hello], [dear"], [out!], [will,], [two...], [..three].
 class OCRWord {
 
+private:
+  struct OCRWordPart {
+    OCRWordPart(
+	const std::size_t begin_index,
+	const std::size_t end_index,
+	const bool is_punct_at_begin,
+	const bool is_punct_at_end,
+	const float italic_confidence);
+
+    std::ostream&
+    dump(
+	std::ostream& os) const;
+
+    std::size_t begin_index; /* inclusive */
+    std::size_t end_index; /* exclusive */
+    bool is_punct_at_begin;
+    bool is_punct_at_end;
+    float italic_confidence;
+  };
+
 public:
   OCRWord(
       const std::size_t subtitle_number,
@@ -45,17 +65,12 @@ public:
         line_number(line_number),
 	word_number(word_number),
 	symbol_vec(std::move(symbol_vec)),
-        priv_italic_confidence(DEFAULT_CONFIDENCE) {
+ 	part_vec() {
   }
       
   std::size_t
   num_ocr_symbols() const {
     return symbol_vec.size();
-  }
-
-  float
-  italic_confidence() const {
-    return priv_italic_confidence;
   }
 
   bool
@@ -84,31 +99,32 @@ public:
       const TextStats& stats);
 
   void
-  derive_confidence();
+  word_parts_determine();
 
-  bool
-  derive_confidence(
-      const float left_confidence,
-      const float right_confidence);
+  float
+  begin_confidence() const;
+
+  float
+  end_confidence() const;
+
+  void
+  word_parts_confidence_propagate(
+      const float prev_confidence,
+      const float next_confidence,
+      bool& have_uncertain,
+      bool& made_change);
 
   std::ostream&
   write(
       std::ostream& os) const;
 
-  // only words are italic, not punctuation.
   std::ostream&
-  write_srt_punct_at_begin(
-      std::ostream& os) const;
-
-  // only words are italic, not punctuation.
-  std::ostream&
-  write_srt_between_punct(
-      std::ostream& os) const;
-
-  // only words are italic, not punctuation.
-  std::ostream&
-  write_srt_punct_at_end(
-      std::ostream& os) const;
+  write_srt(
+      std::ostream& os,
+      const bool is_first,
+      const OCRWord* next,
+      bool& in_italic,
+      bool& entire_line_is_italic) const;
 
   void
   dump(
@@ -122,16 +138,6 @@ public:
 
 private:
   bool
-  has_symbol_of(
-      const char* const set);
-
-  std::size_t
-  num_punct_at_begin() const;
-
-  std::size_t
-  num_punct_at_end() const;
-
-  bool
   bboxes_assign(
       const std::vector<cv::Rect>& src,
       const TextStats* stats,
@@ -143,6 +149,11 @@ private:
       const std::vector<cv::Rect>& src,
       const TextStats& stats,
       const bool test_only);
+
+  float
+  italic_confidence(
+      const std::size_t begin_index /* inclusive */,
+      const std::size_t end_index /* exclusive */) const;
 
 private:
   // The number of the subtitle in the OCRSubtitles, starts at 1.
@@ -157,11 +168,12 @@ private:
   // The symbols of the OCRWord. 
   std::vector<OCRSymbol> symbol_vec;
 
-  // value computed from italic_confidence values of symbols.
-  // negative value means probably not italic
-  // positive value means probably italic
-  // larger negative / positive value means more confidence
-  float priv_italic_confidence;
+  // OCRWord parts:
+  // - if present, a part for punctuation at begin
+  // - a part for each single quote
+  // - a part for each sequence of alphabetical symbols
+  // - if present, a part for punctuation at end
+  std::vector<OCRWordPart> part_vec;
 };
 
 inline std::ostream&

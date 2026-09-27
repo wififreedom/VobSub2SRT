@@ -19,9 +19,37 @@
 
 #include <iostream>
 
+#include "generic_exception.h++"
 #include "debug.h++"
 #include "bbox.h++"
 #include "OCRWord.h++"
+
+OCRWord::OCRWordPart::OCRWordPart(
+    const std::size_t begin_index,
+    const std::size_t end_index,
+    const bool is_punct_at_begin,
+    const bool is_punct_at_end,
+    const float italic_confidence)
+    : begin_index(begin_index),
+      end_index(end_index),
+      is_punct_at_begin(is_punct_at_begin),
+      is_punct_at_end(is_punct_at_end),
+      italic_confidence(italic_confidence) {
+}
+
+std::ostream&
+OCRWord::OCRWordPart::dump(
+    std::ostream& os) const {
+  os << "      symbols " << begin_index << "-" << (end_index - 1);
+  if (is_punct_at_begin) {
+    os << ", punct at begin";
+  }
+  if (is_punct_at_end) {
+    os << ", punct at end";
+  }
+  os << ", ic: " << italic_confidence << std::endl;
+  return os;
+}
 
 bool
 OCRWord::bboxes_assign(
@@ -124,50 +152,170 @@ OCRWord::assign_confidence(
   }
 }
 
-void
-OCRWord::derive_confidence() {
-  // Compute italic_confidence from symbols
-  // Just take the average, this seems to work well.
-  float sum_confidence = 0.0;
-  for (std::size_t i = 0; i < symbol_vec.size(); i++) {
-    sum_confidence += symbol_vec[i].italic_confidence();
-  }
-  priv_italic_confidence = sum_confidence / symbol_vec.size();
-}
-
-bool
-OCRWord::derive_confidence(
+static bool
+internal_derive_confidence(
     const float left_confidence,
-    const float right_confidence) {
-
+    const float right_confidence,
+    float& result_confidence) {
   if (CONFIDENT_ITALIC(left_confidence)) {
     if (CONFIDENT_ITALIC(right_confidence)) {
-      priv_italic_confidence = 200.0;
+      result_confidence = 200.0;
       return true;
     } else if (!CONFIDENT_NOT_ITALIC(right_confidence)) {
-      priv_italic_confidence = 100.0;
+      result_confidence = 100.0;
       return true;
     }
   } else if (CONFIDENT_NOT_ITALIC(left_confidence)) {
     if (CONFIDENT_NOT_ITALIC(right_confidence)) {
-      priv_italic_confidence = -200.0;
+      result_confidence = -200.0;
       return true;
     } else if (!CONFIDENT_ITALIC(right_confidence)) {
-      priv_italic_confidence = -100.0;
+      result_confidence = -100.0;
       return true;
     }
   } else {
     if (CONFIDENT_ITALIC(right_confidence)) {
-      priv_italic_confidence = 101.0;
+      result_confidence = 101.0;
       return true;
     } else if (CONFIDENT_NOT_ITALIC(right_confidence)) {
-      priv_italic_confidence = -101.0;
+      result_confidence = -101.0;
       return true;
     }
   }
   return false;
 }
 
+void
+OCRWord::word_parts_determine() {
+  std::size_t i = 0;
+
+  // determine where non-punctuation starts
+  std::size_t first_non_punct_at_begin_i = i;
+  for (std::size_t j = i; j < symbol_vec.size(); j++) {
+    if (!symbol_vec[j].is_one_of("-.,;:\"'?!")) {
+      first_non_punct_at_begin_i = j;
+      break;
+    }
+  }
+  // include single quote for contractions
+  if (first_non_punct_at_begin_i > 0 &&
+      first_non_punct_at_begin_i < symbol_vec.size() &&
+      symbol_vec[first_non_punct_at_begin_i].is_one_of("'")) {
+    first_non_punct_at_begin_i--;
+  }
+  if (first_non_punct_at_begin_i > 0) {
+    part_vec.emplace_back(0, first_non_punct_at_begin_i, true, false, DEFAULT_CONFIDENCE);
+    i = first_non_punct_at_begin_i;
+  }
+
+  // determine where punctuation at end begins
+  std::size_t first_of_punct_at_end_i = i;
+  for (std::size_t j = i; j < symbol_vec.size(); j++) {
+    if (!symbol_vec[j].is_one_of("-.,;:\"'?!")) {
+      first_of_punct_at_end_i = j + 1;
+    }
+  }
+
+  while (i < first_of_punct_at_end_i) {
+    // detect next single quote or first_of_punct_at_end_i
+    std::size_t next_i = first_of_punct_at_end_i;
+    for (std::size_t j = i + 1; j < first_of_punct_at_end_i; j++) {
+      if (symbol_vec[j].is_one_of("'")) {
+	next_i = j;
+	break;
+      }
+    }
+    // next_i is at the next single quote or at the first_of_punct_at_end_i
+
+    if (i < next_i && symbol_vec[i].is_one_of("'")) {
+      part_vec.emplace_back(i, i + 1, false, false, DEFAULT_CONFIDENCE);
+      i++;
+    }
+    if (i < next_i) {
+      const float confidence = italic_confidence(i, next_i);
+      part_vec.emplace_back(i, next_i, false, false, confidence);
+      i = next_i;
+    }
+  }
+
+  if (i < symbol_vec.size()) {
+    part_vec.emplace_back(i, symbol_vec.size(), false, true, DEFAULT_CONFIDENCE);
+  }
+}
+
+float
+OCRWord::begin_confidence() const {
+  for (std::size_t i = 0; i < part_vec.size(); i++) {
+    const OCRWordPart& part = part_vec[i];
+    if (CONFIDENT_ITALIC(part.italic_confidence) ||
+	CONFIDENT_NOT_ITALIC(part.italic_confidence)) {
+      return part.italic_confidence;
+    }
+    if (!part_vec[i].is_punct_at_begin && ! part_vec[i].is_punct_at_begin) {
+      break;
+    }
+  }
+  return DEFAULT_CONFIDENCE;
+}
+
+float
+OCRWord::end_confidence() const {
+  for (std::size_t i = part_vec.size(); i > 0; i--) {
+    const OCRWordPart& part = part_vec[i - 1];
+    if (CONFIDENT_ITALIC(part.italic_confidence) ||
+	CONFIDENT_NOT_ITALIC(part.italic_confidence)) {
+      return part.italic_confidence;
+    }
+    if (!part_vec[i].is_punct_at_begin && ! part_vec[i].is_punct_at_begin) {
+      break;
+    }
+  }
+  return DEFAULT_CONFIDENCE;
+}
+
+void
+OCRWord::word_parts_confidence_propagate(
+    const float prev_confidence,
+    const float next_confidence,
+    bool& have_uncertain,
+    bool& made_change) {
+  // Propagate italic_confidence for uncertain parts where appropriate.
+  bool word_have_uncertain = false;
+  bool word_made_change = false;
+  do {
+    word_have_uncertain = false;
+    word_made_change = false;
+
+    for (std::size_t i = 0; i < part_vec.size(); i++) {
+      OCRWordPart& part = part_vec[i];
+
+      if (!CONFIDENT_NOT_ITALIC(part.italic_confidence) &&
+	  !CONFIDENT_ITALIC(part.italic_confidence)) {
+
+	const float left_confidence =
+	  ((i == 0) ? prev_confidence : part_vec[i - 1].italic_confidence);
+
+	const float right_confidence =
+	  (((i + 1)< part_vec.size()) ? part_vec[i + 1].italic_confidence : next_confidence);
+
+	if (internal_derive_confidence(
+	      left_confidence,
+	      right_confidence,
+	      part.italic_confidence)) {
+	  made_change = true;
+	  word_made_change = true;
+	}
+	else {
+	  word_have_uncertain = true;
+	}
+      }
+    }
+  } while (word_have_uncertain && word_made_change);
+
+  if (word_have_uncertain) {
+    have_uncertain = true;
+  }
+}
 
 std::ostream&
 OCRWord::write(
@@ -178,78 +326,97 @@ OCRWord::write(
   return os;
 }
 
-// only words are italic, not punctuation.
 std::ostream&
-OCRWord::write_srt_punct_at_begin(std::ostream& os) const {
-  const std::size_t num = num_punct_at_begin();
+OCRWord::write_srt(
+    std::ostream& os,
+    const bool is_first,
+    const OCRWord* next,
+    bool& in_italic,
+    bool& entire_line_is_italic) const {
 
-  for (std::size_t i = 0; i < num; i++) {
-    symbol_vec[i].write_srt(os);
-  }
-  return os;
-}
+  // write
+  {
+    for (std::size_t i = 0; i < part_vec.size(); ++i) {
+      const OCRWordPart& part = part_vec[i];
 
-// only words are italic, not punctuation.
-std::ostream&
-OCRWord::write_srt_between_punct(std::ostream& os) const {
-  const std::size_t num_at_end = num_punct_at_end();
-  if (num_at_end == symbol_vec.size()) {
-    // already written by write_srt_punct_at_begin
-    return os;
-  }
-  const std::size_t num_at_begin = num_punct_at_begin();
+      if (part.is_punct_at_begin) {
+	// don't change italic for this part
+      }
+      else if (part.is_punct_at_end) {
+	break;
+      }
+      else {
+	const bool part_is_italic = CONFIDENT_ITALIC(part.italic_confidence);
+	if (!part_is_italic) {
+	  if (!(is_first && is_minus())) {
+	    entire_line_is_italic = false;
+	  }
+	  if (in_italic) {
+	    os << "</i>";
+	    in_italic = false;
+	  }
+	}
+	else if (!in_italic) {
+	  os << "<i>";
+	  in_italic = true;
+	}
+      }
 
-  for (std::size_t i = num_at_begin; i < symbol_vec.size() - num_at_end; i++) {
-    symbol_vec[i].write_srt(os);
-  }
-  return os;
-}
+      // TODO does the "'" belong to the part before or to
+      // the part after? This can determine if it should be italic or not.
+      // - for "he's", it belongs to the part after
+      // - for "l'accident", it belongs to the part before.
 
-// only words are italic, not punctuation.
-std::ostream&
-OCRWord::write_srt_punct_at_end(std::ostream& os) const {
-  const std::size_t num_at_end = num_punct_at_end();
-  if (num_at_end == symbol_vec.size()) {
-    // already written by write_srt_punct_at_begin
-    return os;
-  }
-  const std::size_t start = symbol_vec.size() - num_at_end;
-
-  for (std::size_t i = start; i < symbol_vec.size(); i++) {
-    symbol_vec[i].write_srt(os);
-  }
-  return os;
-}
-
-bool
-OCRWord::has_symbol_of(
-    const char * const set) {
-  for (std::size_t i = 0; i < symbol_vec.size(); i++) {
-    if (symbol_vec[i].is_one_of(set)) {
-      return true;
-    }
-  } 
-  return false;
-}
-
-std::size_t
-OCRWord::num_punct_at_begin() const {
-  for (std::size_t i = 0; i < symbol_vec.size(); i++) {
-    if (!symbol_vec[i].is_one_of("-.,;:\"'?!")) {
-      return i;
+      // write part, including any single quote at the start
+      for (std::size_t j = part.begin_index; j < part.end_index; j++) {
+	symbol_vec[j].write_srt(os);
+      }
     }
   }
-  return symbol_vec.size();
-}
 
-std::size_t
-OCRWord::num_punct_at_end() const {
-  for (std::size_t i = symbol_vec.size(); i > 0; i--) {
-    if (!symbol_vec[i - 1].is_one_of("-.,;:\"'?!")) {
-      return (symbol_vec.size() - i);
+  if (next) {
+    // TODO this should only look at the first part of the next word
+    if (in_italic && !CONFIDENT_ITALIC(next->begin_confidence())) {
+      os << "</i>";
+      in_italic = false;
     }
+    // write remaining punctuation after potential "</i>"
+    if (part_vec.size() && part_vec.back().is_punct_at_end) {
+      const OCRWordPart& part = part_vec.back();
+      for (std::size_t j = part.begin_index; j < part.end_index; j++) {
+	symbol_vec[j].write_srt(os);
+      }
+    }
+    os << " ";
   }
-  return symbol_vec.size();
+  else {
+    if (entire_line_is_italic) {
+      // write remaining punctuation before potential "</i>"
+      if (part_vec.size() && part_vec.back().is_punct_at_end) {
+	const OCRWordPart& part = part_vec.back();
+	for (std::size_t j = part.begin_index; j < part.end_index; j++) {
+	  symbol_vec[j].write_srt(os);
+	}
+      }
+    }
+    if (in_italic) {
+      os << "</i>";
+      in_italic = false;
+    }
+    if (!entire_line_is_italic) {
+      // write remaining punctuation after potential "</i>"
+      if (part_vec.size() && part_vec.back().is_punct_at_end) {
+	const OCRWordPart& part = part_vec.back();
+	for (std::size_t j = part.begin_index; j < part.end_index; j++) {
+	  symbol_vec[j].write_srt(os);
+	}
+      }
+    }
+    os << "\n";
+  }
+
+
+  return os;
 }
 
 bool
@@ -803,10 +970,12 @@ OCRWord::bboxes_assign_repair_too_few_bboxes(
 void
 OCRWord::dump(std::ostream& os) const {
   os << "  word: ";
-  write(os);
-  os << ": ic: " << priv_italic_confidence <<
-    ", " << symbol_vec.size() << " symbols: " <<
-    std::endl;
+  write(os) << std::endl;
+  os << "    " << part_vec.size() << " parts:" << std::endl;
+  for (const auto& it : part_vec) {
+    it.dump(os);
+  }
+  os << "    " << symbol_vec.size() << " symbols:" << std::endl;
   for (const auto& it : symbol_vec) {
     it.dump(os);
   }
@@ -820,5 +989,21 @@ OCRWord::symbol_bboxes_draw(
   for (std::size_t i = 0; i < symbol_vec.size(); i++) {
     symbol_vec[i].bboxes_draw(img, line_bbox, grayscale_color);
   }
+}
+
+float
+OCRWord::italic_confidence(
+    const std::size_t begin_index /* inclusive */,
+    const std::size_t end_index /* exclusive */) const {
+  if ((begin_index >= symbol_vec.size()) ||
+      (end_index > symbol_vec.size()) ||
+      (begin_index >= end_index)) {
+    throw generic_exception("BUG: OCRWord::italic_confidence: invalid symbol index");
+  }
+  float sum_confidence = 0.0;
+  for (std::size_t i = begin_index; i < end_index; i++) {
+    sum_confidence += symbol_vec[i].italic_confidence();
+  }
+  return sum_confidence / (end_index - begin_index);
 }
 

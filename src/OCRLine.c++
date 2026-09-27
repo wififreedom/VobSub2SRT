@@ -487,92 +487,46 @@ OCRLine::assign_confidence(
 
 void
 OCRLine::propagate_word_confidence() {
-  // Derive italic confidence for words from symbols.
-  // This may be inconclusive.
-  for (std::size_t word_i = 0; word_i < word_vec.size(); word_i++) {
-     word_vec[word_i].derive_confidence();
+  // Determine word parts and derive italic confidence for word parts from
+  // symbols. The italic confidence may be inconclusive for some parts.
+  for (auto& it : word_vec) {
+    it.word_parts_determine();
   }
 
-  // Propagate italic_confidence for uncertain words where appropriate.
+  // Propagate italic_confidence for word parts that have uncertain
+  // italic confidence, where possible.
   bool have_uncertain = false;
   bool made_change = false;
   do {
     have_uncertain = false;
     made_change = false;
 
-    for (std::size_t word_i = 0; word_i < word_vec.size(); word_i++) {
-      OCRWord& word = word_vec[word_i];
+    for (std::size_t i = 0; i < word_vec.size(); i++) {
+      OCRWord& word = word_vec[i];
 
-      if (!CONFIDENT_NOT_ITALIC(word.italic_confidence()) &&
-	  !CONFIDENT_ITALIC(word.italic_confidence())) {
-	float left_confidence = DEFAULT_CONFIDENCE;
-	float right_confidence = DEFAULT_CONFIDENCE;
+      const float prev_confidence = (i > 0) ? word_vec[i - 1].end_confidence() : DEFAULT_CONFIDENCE;
+      const float next_confidence = ((i + 1) < word_vec.size()) ? word_vec[i + 1].begin_confidence() : DEFAULT_CONFIDENCE;
 
-	if (word_i > 0) {
-	  left_confidence = word_vec[word_i - 1].italic_confidence();
-	}
-	if (word_i < (word_vec.size() - 1)) {
-	  right_confidence = word_vec[word_i + 1].italic_confidence();
-	}
-
-	if (word.derive_confidence(left_confidence, right_confidence)) {
-	  made_change = true;
-	}
-	else {
-	  have_uncertain = true;
-	}
-      }
+      word.word_parts_confidence_propagate(
+	  prev_confidence,
+	  next_confidence,
+	  have_uncertain,
+	  made_change);
     }
   } while (have_uncertain && made_change);
 }
 
 void
 OCRLine::write_srt(std::ostream& os) const {
-  // Only look at italic_confidence of words, not of symbols.
   bool entire_line_is_italic = true;
   bool in_italic = false;
-  for (std::size_t word_i = 0; word_i < word_vec.size(); word_i++) {
-    const bool word_is_last = ((word_i + 1) == word_vec.size());
-    const OCRWord& word = word_vec[word_i];
-
-    const bool word_is_italic = CONFIDENT_ITALIC(word.italic_confidence());
-    if (!word_is_italic && !(word_i == 0 && word.is_minus())) {
-      entire_line_is_italic = false;
-    }
-
-    // TODO if there is a single quote in the middle of an OCR word,
-    // the part before and after it should be considered separate
-    // words, and italic_confidence should also be separate.
-    // This should already be taken into account before the call to
-    // propagate_word_confidence().
-
-    word.write_srt_punct_at_begin(os);
-    if (word_is_italic && !in_italic) {
-      os << "<i>";
-      in_italic = true;
-    }
-    word.write_srt_between_punct(os);
-    if (word_is_last) {
-      if (entire_line_is_italic) {
-	word.write_srt_punct_at_end(os);
-      }
-      if (in_italic) {
-	os << "</i>";
-	in_italic = false;
-      }
-      if (!entire_line_is_italic) {
-	word.write_srt_punct_at_end(os);
-      }
-      os << "\n";
-    } else {
-      if (in_italic && !word_is_last &&
-	  (!CONFIDENT_ITALIC(word_vec[word_i + 1].italic_confidence()))) {
-	os << "</i>";
-	in_italic = false;
-      }
-      word.write_srt_punct_at_end(os);
-      os << " ";
-    }
+  for (std::size_t i = 0; i < word_vec.size(); i++) {
+    word_vec[i].write_srt(
+	os,
+	(i == 0),
+	((i + 1) == word_vec.size()) ? NULL : &(word_vec[i + 1]),
+       	in_italic,
+       	entire_line_is_italic);
   }
 }
 

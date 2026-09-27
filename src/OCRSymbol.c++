@@ -171,7 +171,7 @@ OCRSymbol::assign_confidence(
 void
 OCRSymbol::dump(
     std::ostream& os) const {
-  os << "    utf8_symbol: " << priv_utf8_symbol;
+  os << "      utf8_symbol: " << priv_utf8_symbol;
   for (std::size_t i = 0; i < priv_bboxes.size(); i++) {
     const cv::Rect& bbox = priv_bboxes[i];
     os << ", bbox " << (i + 1) << ": (" <<
