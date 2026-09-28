@@ -270,7 +270,8 @@ process_sub(
   subtitles.do_ocr(tess_base_api, ocr_batch_size, show);
 
   if (verbosity) {
-    std::cerr << "Performing replacements (if any)" << std::endl;
+    std::cerr << "Applying " << replacements.num_replacements() <<
+      " match/replacement patterns" << std::endl;
   }
   subtitles.correct_ocr(replacements);
 

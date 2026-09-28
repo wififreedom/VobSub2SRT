@@ -33,20 +33,20 @@ public:
 	const std::string& match_pattern,
 	const std::string& replacement_pattern);
 
-  const std::string&
-  match_pattern() const {
-    return priv_match_pattern;
-  }
+    const std::string&
+    match_pattern() const {
+      return priv_match_pattern;
+    }
 
-  const std::string&
-  replacement_pattern() const {
-    return priv_replacement_pattern;
-  }
+    const std::string&
+    replacement_pattern() const {
+      return priv_replacement_pattern;
+    }
 
-  void
-  replace(
-      const std::string& src,
-      std::string& dst) const;
+    void
+    replace(
+	const std::string& src,
+	std::string& dst) const;
 
   private:
     // See: https://en.cppreference.com/cpp/regex/syntax_option_type
@@ -59,6 +59,11 @@ public:
 
     std::string priv_replacement_pattern;
   };
+
+  std::size_t
+  num_replacements() const {
+    return repl_vec.size();
+  }
 
   void
   read(
