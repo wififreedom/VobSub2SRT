@@ -307,6 +307,21 @@ bbox_top_row_left_pixel_pos(
 }
 
 int
+bbox_top_row_right_pixel_pos(
+    const cv::Mat& img,
+    const cv::Rect& bbox)
+{
+  if (bbox.height > 0) {
+    for (int i = bbox.width - 1; i >= 0; i--) {
+      if (img.at<uchar>(bbox.y, bbox.x + i) == ((uchar) 0)) {
+	return i;
+      }
+    }
+  }
+  return -1;
+}
+
+int
 bbox_bottom_row_left_pixel_pos(
     const cv::Mat& img,
     const cv::Rect& bbox)
@@ -314,6 +329,22 @@ bbox_bottom_row_left_pixel_pos(
   if (bbox.height > 0) {
     const int bottom_row = bbox.y + bbox.height - 1;
     for (int i = 0; i < bbox.width; i++) {
+      if (img.at<uchar>(bottom_row, bbox.x + i) == ((uchar) 0)) {
+	return i;
+      }
+    }
+  }
+  return -1;
+}
+
+int
+bbox_bottom_row_right_pixel_pos(
+    const cv::Mat& img,
+    const cv::Rect& bbox)
+{
+  if (bbox.height > 0) {
+    const int bottom_row = bbox.y + bbox.height - 1;
+    for (int i = bbox.width - 1; i >= 0; i--) {
       if (img.at<uchar>(bottom_row, bbox.x + i) == ((uchar) 0)) {
 	return i;
       }

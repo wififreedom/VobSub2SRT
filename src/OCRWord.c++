@@ -95,7 +95,7 @@ OCRWord::bboxes_assign(
     }
 
     if (debug || subtitle_number == debug_subtitle_number) {
-      cerr_log() << "no bboxes assigned, need reliable statistics" << std::endl;
+      cerr_log() << "no bboxes assigned because not considered reliable input for statistics" << std::endl;
     }
   }
   else {

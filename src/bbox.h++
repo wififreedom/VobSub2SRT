@@ -107,13 +107,35 @@ bbox_top_row_left_pixel_pos(
     const cv::Rect& bbox);
 
 // returns:
-// 0..bbox.width-1  position relative to bbox.x of leftmost black pixel at
+// 0..bbox.width-1  position relative to bbox.x of rightmost black pixel at
 //                  bbox.y (top row of bbox).
 // -1               if bbox.width <= 0; or bbox.height <= 0, or if there is no
 //                  black pixel in the top row. All of these mean the bbox is
 //                  invalid.
 int
+bbox_top_row_right_pixel_pos(
+    const cv::Mat& img,
+    const cv::Rect& bbox);
+
+// returns:
+// 0..bbox.width-1  position relative to bbox.x of leftmost black pixel at
+//                  bbox.y + bbox.height - 1 (bottom row of bbox).
+// -1               if bbox.width <= 0; or bbox.height <= 0, or if there is no
+//                  black pixel in the bottom row. All of these mean the bbox is
+//                  invalid.
+int
 bbox_bottom_row_left_pixel_pos(
+    const cv::Mat& img,
+    const cv::Rect& bbox);
+
+// returns:
+// 0..bbox.width-1  position relative to bbox.x of rightmost black pixel at
+//                  bbox.y + bbox.height - 1 (bottom row of bbox).
+// -1               if bbox.width <= 0; or bbox.height <= 0, or if there is no
+//                  black pixel in the bottom row. All of these mean the bbox is
+//                  invalid.
+int
+bbox_bottom_row_right_pixel_pos(
     const cv::Mat& img,
     const cv::Rect& bbox);
 

@@ -58,7 +58,8 @@ public:
   void
   add(
       const cv::Rect& bbox,
-      const int pos);
+      const int l,
+      const int r);
 
   std::optional<int>
   height_min() const;
@@ -67,7 +68,10 @@ public:
   width_avg() const;
 
   std::optional<float>
-  pos_avg() const;
+  l_avg() const;
+
+  std::optional<float>
+  r_avg() const;
 
   void
   dump(
@@ -78,7 +82,8 @@ private:
   // if count is high, average is reliable.
   MinAvgMaxStat width_stat;
   MinAvgMaxStat height_stat;
-  MinAvgMaxStat pos_stat;
+  MinAvgMaxStat l_stat;
+  MinAvgMaxStat r_stat;
 };
 
 class TextStats {
@@ -88,7 +93,8 @@ public:
   symbol_add(
     const std::string& utf8_symbol,
     const cv::Rect& bbox,
-    const int pos);
+    const int l,
+    const int r);
 
   void
   symbol_spacing_add(
@@ -97,6 +103,10 @@ public:
   void
   word_spacing_add(
       const int spacing);
+
+  const SymbolStat*
+  symbol_stat(
+      const std::string& utf8_symbol) const;
 
   std::optional<int>
   symbol_height_min(
@@ -107,7 +117,11 @@ public:
       const std::string& utf8_symbol) const;
 
   std::optional<float>
-  symbol_pos_avg(
+  symbol_l_avg(
+      const std::string& utf8_symbol) const;
+
+  std::optional<float>
+  symbol_r_avg(
       const std::string& utf8_symbol) const;
 
   std::optional<int>

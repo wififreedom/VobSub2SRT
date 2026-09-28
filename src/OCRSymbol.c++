@@ -63,7 +63,9 @@ OCRSymbol::build_stats(
 	priv_utf8_symbol,
 	bbox,
 	bbox_top_row_left_pixel_pos(img, bbox) -
-	bbox_bottom_row_left_pixel_pos(img, bbox));
+	bbox_bottom_row_left_pixel_pos(img, bbox),
+	bbox_top_row_right_pixel_pos(img, bbox) -
+	bbox_bottom_row_right_pixel_pos(img, bbox));
   }
 }
 
@@ -120,7 +122,14 @@ OCRSymbol::assign_confidence(
     // TODO see if we can base the constants -1.8 on something (bbox width?)
 
     // Symbols mis-identified by OCR should not be assigned a confidence value.
-    const std::optional<float> avg_width_opt = stats.symbol_width_avg(priv_utf8_symbol);
+    // Use symbol stats to try te detect mis-identified symbols.
+    const SymbolStat* stat = stats.symbol_stat(priv_utf8_symbol);
+    if (!stat) {
+      // No info, do not assign confidence value.
+      return;
+    }
+
+    const std::optional<float> avg_width_opt = stat->width_avg();
     if (!avg_width_opt.has_value()) {
       // No info, do not assign confidence value.
       return;
@@ -130,7 +139,7 @@ OCRSymbol::assign_confidence(
       return;
     }
 
-    const std::optional<int> min_height_opt = stats.symbol_height_min(priv_utf8_symbol);
+    const std::optional<int> min_height_opt = stat->height_min();
     if (!min_height_opt.has_value()) {
       // No info, do not assign confidence value.
       return;
@@ -140,21 +149,34 @@ OCRSymbol::assign_confidence(
       return;
     }
 
-    const std::optional<float> avg_pos_opt = stats.symbol_pos_avg(priv_utf8_symbol);
-    if (!avg_pos_opt.has_value()) {
+    const std::optional<float> avg_l_opt = stat->l_avg();
+    if (!avg_l_opt.has_value()) {
       // No info, do not assign confidence value.
       return;
     }
-    const int top_pos = bbox_top_row_left_pixel_pos(img, bbox);
-    const int bottom_pos = bbox_bottom_row_left_pixel_pos(img, bbox);
-    if (top_pos == -1 || bottom_pos == -1) {
+    const int top_l = bbox_top_row_left_pixel_pos(img, bbox);
+    const int bottom_l = bbox_bottom_row_left_pixel_pos(img, bbox);
+    if (top_l == -1 || bottom_l == -1) {
       // Bad bbox, possibly a split combined one.
       return;
     }
-    const int pos = top_pos - bottom_pos;
+    const float val_l = (top_l - bottom_l) - avg_l_opt.value();
 
-    if (pos > avg_pos_opt.value() + 0.05 /* error margin */) {
-      priv_italic_confidence = (1 + pos - avg_pos_opt.value()) * bbox.height;
+    const std::optional<float> avg_r_opt = stat->r_avg();
+    if (!avg_r_opt.has_value()) {
+      // No info, do not assign confidence value.
+      return;
+    }
+    const int top_r = bbox_top_row_right_pixel_pos(img, bbox);
+    const int bottom_r = bbox_bottom_row_right_pixel_pos(img, bbox);
+    if (top_r == -1 || bottom_r == -1) {
+      // Bad bbox, possibly a split combined one.
+      return;
+    }
+    const float val_r = (top_r - bottom_r) - avg_r_opt.value();
+
+    if (val_l > 0.05 /* error margin */ || val_r > 0.05 /* error margin */) {
+      priv_italic_confidence = (1 + std::max(val_l, val_r)) * bbox.height;
     }
     else {
       priv_italic_confidence = -bbox.height;

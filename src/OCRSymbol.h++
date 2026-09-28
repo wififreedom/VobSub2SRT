@@ -185,18 +185,12 @@ public:
   //   the minimum, average and maximum C value for each distinct symbol.
   // - Retrieve the average rel_dist value D for a symbol from the TextStats.
   // - Take E = C - D. if > 0, likely italic. If not, likely not italic.
-  //   The greater the difference, the more confident (up to a point, then
+  // - Do the same for the last pixel in top and bottom row.
+  // - The greater the difference, the more confident (up to a point, then
   //   it's likely unreliable information such as a mis-identified symbol,
   //   or an unreliable bounding box).
   // 
-  // This works as long as the same font is used throughout the subtitles, and
-  // italic is used sparsely, otherwise the statistics will be off.
-  // If italic is used too frequently, the algorithm needs to be adapted:
-  // - a histogram could be used per symbol instead, with occurance counts per
-  //   rel_dist value.
-  // - there should be peaks in the histogram for two rel_dist values: one not
-  //   italic, the larger one italic.
-  // - not implementing that for now.
+  // This works well as long as the same font is used throughout the subtitles.
   //
   // Also:
   // - don't calculate italic confidence for:
@@ -205,6 +199,7 @@ public:
   //     statistics (could be a symbol mis-identified by OCR).
   //   - symbols without a bbox.
   //   - symbols with multiple bboxes
+  //   - symbols for which there wasn't enough input data for the statistics
   //
   void
   assign_confidence(

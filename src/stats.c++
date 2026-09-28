@@ -90,16 +90,19 @@ MinAvgMaxStat::dump(std::ostream& os) const {
 SymbolStat::SymbolStat()
     : width_stat(),
       height_stat(),
-      pos_stat() {
+      l_stat(),
+      r_stat() {
 }
 
 void
 SymbolStat::add(
     const cv::Rect& bbox,
-    const int pos) {
+    const int l,
+    const int r) {
   width_stat.add(bbox.width);
   height_stat.add(bbox.height);
-  pos_stat.add(pos);
+  l_stat.add(l);
+  r_stat.add(r);
 }
 
 std::optional<int>
@@ -107,14 +110,19 @@ SymbolStat::height_min() const {
   return height_stat.min();
 }
 
-std::optional<float> 
+std::optional<float>
 SymbolStat::width_avg() const {
   return width_stat.avg();
 }
 
 std::optional<float> 
-SymbolStat::pos_avg() const {
-  return pos_stat.avg();
+SymbolStat::l_avg() const {
+  return l_stat.avg();
+}
+
+std::optional<float> 
+SymbolStat::r_avg() const {
+  return r_stat.avg();
 }
 
 void
@@ -123,15 +131,18 @@ SymbolStat::dump(std::ostream& os) const {
   width_stat.dump(os);
   os << ", h ";
   height_stat.dump(os);
-  os << ", p ";
-  pos_stat.dump(os);
+  os << ", l ";
+  l_stat.dump(os);
+  os << ", r ";
+  r_stat.dump(os);
 }
 
 void
 TextStats::symbol_add(
     const std::string& utf8_symbol,
     const cv::Rect& bbox,
-    const int pos) {
+    const int l,
+    const int r) {
 
   auto it = symbol_stats_map.find(utf8_symbol);
 
@@ -143,7 +154,7 @@ TextStats::symbol_add(
     }
   }
 
-  symbol_stats_map.try_emplace(utf8_symbol).first->second.add(bbox, pos);
+  symbol_stats_map.try_emplace(utf8_symbol).first->second.add(bbox, l, r);
 }
 
 void
@@ -164,6 +175,13 @@ TextStats::word_spacing_add(
   word_spacing_stat.add(spacing);
 }
 
+const SymbolStat*
+TextStats::symbol_stat(
+    const std::string& utf8_symbol) const {
+  const auto it = symbol_stats_map.find(utf8_symbol);
+  return (it != symbol_stats_map.end()) ? &(it->second) : NULL;
+}
+
 std::optional<int>
 TextStats::symbol_height_min(
     const std::string& utf8_symbol) const {
@@ -179,10 +197,17 @@ TextStats::symbol_width_avg(
 }
 
 std::optional<float>
-TextStats::symbol_pos_avg(
+TextStats::symbol_l_avg(
     const std::string& utf8_symbol) const {
   const auto it = symbol_stats_map.find(utf8_symbol);
-  return (it != symbol_stats_map.end()) ? it->second.pos_avg() : std::nullopt;
+  return (it != symbol_stats_map.end()) ? it->second.l_avg() : std::nullopt;
+}
+
+std::optional<float>
+TextStats::symbol_r_avg(
+    const std::string& utf8_symbol) const {
+  const auto it = symbol_stats_map.find(utf8_symbol);
+  return (it != symbol_stats_map.end()) ? it->second.r_avg() : std::nullopt;
 }
 
 std::optional<int>
