@@ -344,6 +344,15 @@ OCRWord::write_srt(
     bool& in_italic,
     bool& entire_line_is_italic) const {
 
+  if (part_vec.empty()) {
+    // no italic detection performed
+    for (const auto& it : symbol_vec) {
+      it.write_srt(os);
+    }
+    os << (next ? " " : "\n");
+    return os;
+  }
+
   for (std::size_t i = 0; i < part_vec.size(); ++i) {
     const OCRWordPart& part = part_vec[i];
 
