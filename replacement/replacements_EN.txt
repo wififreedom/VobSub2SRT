@@ -69,47 +69,51 @@ ecmascript
 ^-([^ ])
 - \1
 
-# Match: "Iam", "lam", "I'm", "l'm" followed by one of ".,!?"
-# Replace with: "I am"
-\b[Il]['a]m\b([.,!?])
-I am\1
-
-# Match: "Iam", "lam", "I'm", "l'm"
+# Match: "l'm"
 # Replace with: "I'm"
-\b[Il]['a]m\b
-I'm
+\bl[']m
+I'm\1
 
+# Match: "Iam", "lam"
+# Replace with: "I am"
+\b[Il]am
+I am
+
+# Match: "aml"
+# Replace with: "am I"
 \baml\b
 am I
 
 # Match: "I'I", "I'l", "l'I", "l'l", "I'II", "I'Il", "I'lI", "I'll", "l'II",
-#        "l'Il", "l'lI", "l'll".
-# Replace with: "I'll".
+#        "l'Il", "l'lI", "l'll"
+# Replace with: "I'll"
 \b[Il]'[Il][Il]?\b
 I'll
 
+# Match: "lll"
+# Replace with: "I'll"
 \blll\b
 I'll
 
+# Match: "l' "
+# Replace with: "I'll "
+# Note: avoid accidentally matching the French "l'" as in "l'accident"
+\bl'( )
+I'll\1
+
 # Match: " [", followed by an ASCII alphabetical character.
-# Replace with: " I", followed by the ASCII alphabetical character.
+# Replace with: " I ", followed by the ASCII alphabetical character.
 # Note: can't use \b in front of "[", "[" does not start a word, so use multiple
 # match patterns.
-[ ]\[([A-Za-z])
- I \1
+( )\[([A-Za-z])
+\1I \2
 
 # Match: "[", at the begin of a line, followed by an ASCII alphabetical character.
-# Replace with: "I", followed by the matched ASCII alphabetical character.
+# Replace with: "I ", followed by the matched ASCII alphabetical character.
 # Note: can't use \b in front of "[", "[" does not start a word, so use multiple
 # match patterns.
 ^\[([A-Za-z])
 I \1
-
-# Match: "l' "
-# Replace with: "I'll"
-# Note: avoid accidentally matching the French "l'" as in "l'accident"
-\bl'( )
-I'll\1
 
 # Match: "l" as a word, at the end of a line
 # Replace with: "I"
@@ -126,6 +130,11 @@ I\1
 # Match: "lL" as a word
 \blL\b
 I
+
+# Match: a number, followed by "% ", followed by a multiple of a time period
+# Replace with: the number, "½ ", and the multiple of a time period
+([0-9])% ((seconds)|(minutes)|(hours)|(days)|(weeks)|(months)|(years)|(decades)|(centuries)|(millennia))
+\1½ \2
 
 \‘
 '
