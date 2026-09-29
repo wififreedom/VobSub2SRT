@@ -277,7 +277,7 @@ OCRWord::end_confidence() const {
 	CONFIDENT_NOT_ITALIC(part.italic_confidence)) {
       return part.italic_confidence;
     }
-    if (!part_vec[i].is_punct_at_begin && ! part_vec[i].is_punct_at_begin) {
+    if (!part.is_punct_at_begin && !part.is_punct_at_end) {
       break;
     }
   }
