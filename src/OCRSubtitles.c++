@@ -434,14 +434,14 @@ OCRSubtitles::batch_prepare(
     std::size_t line_i = 0;
     for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
       for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
-	cv::Rect target_bbox(
+	const cv::Rect target_bbox(
 	    NUM_BORDER_PIXELS,
 	    NUM_BORDER_PIXELS + line_i * (line_max_height + NUM_BORDER_PIXELS),
 	    lb_it.width,
 	    lb_it.height);
 	subtitle_info_vec[si_i].combined_line_bbox_vec.emplace_back(target_bbox);
 
-	// Ccopy line from bw_img into combined image, inverted to have black
+	// Copy line from bw_img into combined image, inverted to have black
 	// text on white background.
 	cv::Mat src(subtitle_info_vec[si_i].bw_img, lb_it);
 	cv::Mat dst(combined_img, target_bbox);
@@ -487,172 +487,148 @@ OCRSubtitles::batch_ocr(
       static_cast<int>(combined_img.step));
   tess_base_api.Recognize(0);
 
-  // declare here for cleanup on exception
-  tesseract::ResultIterator* ri = NULL;
-  char* symbol = NULL;
+  std::unique_ptr<tesseract::ResultIterator> ri(tess_base_api.GetIterator());
+  if (!ri) {
+    throw generic_exception("ocr: could not get tesseract ResultIterator");
+  }
 
-  try {
-    ri = tess_base_api.GetIterator();
-    if (ri) {
-      std::size_t si_i = batch_i; /* subtitle_info_vec index */
-      std::vector<OCRLine> line_vec;
-      std::vector<OCRWord> word_vec;
-      std::vector<cv::Rect> word_bbox_vec;
-      std::vector<cv::Rect> symbol_bbox_vec;
+  std::size_t si_i = batch_i; /* subtitle_info_vec index */
+  std::vector<OCRLine> line_vec;
+  std::vector<OCRWord> word_vec;
+  std::vector<cv::Rect> word_bbox_vec;
+  std::vector<cv::Rect> symbol_bbox_vec;
+
+  do {
+    bool first = true;
+
+    do {
+      std::vector<OCRSymbol> symbol_vec;
 
       do {
-	bool first = true;
-
-	do {
-	  std::vector<OCRSymbol> symbol_vec;
-
-	  do {
-	    if (!first) {
-	      ri->Next(tesseract::RIL_SYMBOL);
-	    }
-	    else {
-	      first = false;
-	    }
-
-	    // If there is no more text in the image, GetUTF8Text returns NULL.
-	    // This can only happen if the image is empty. In all other cases
-	    // ri->Next returns false and the loop exits.
-	    symbol = ri->GetUTF8Text(tesseract::RIL_SYMBOL);
-	    if (!symbol) {
-	      std::cerr << "WARNING: subtitle " << (si_i + 1) <<
-		", line " << (line_vec.size() + 1) <<
-		": ocr: image has no text (--batch-size with a larger value may fix this)" << std::endl;
-	      delete ri;
-	      ri = NULL;
-	      return; // no text at all
-	    }
-
-	    // work around bug in tesseract, which recognizes 'I' as '|'
-	    // '|' is very unlikely to occur in subtitles.
-	    if (symbol[0] == '|')
-	      symbol[0] = 'I';
-
-	    // Tesseract's observed behaviour for the subtitles is equivalent
-	    // to:
-	    // - it calculates bounding boxes in some way, most perfectly
-	    //   accurate, but some wildly inaccurate.
-	    // - it then sorts the bounding boxes by something like the middle
-	    //   of the bbox (sometimes they are not ordered by x coordinate),
-	    //   inserting inaccurate bboxes (if any) in the wrong place.
-	    // - it then returns the bounding box at index i for the symbol at
-	    //   index i.
-	    // - the returned bounding box may therefore be of a different
-	    //   symbol.
-	    // For this reason, we do not immediately assign bounding boxes to
-	    // words and symbols, but make a list first, then check and improve
-	    // the bounding boxes by using a list of bounding boxes determined
-	    // with opencv contour detection, then assign the bounding boxes to
-	    // words and symbols.
-	    //
-	    // The returned bottom and right of the bounding box are exclusive, just
-	    // like for the contour bboxes we determine later.
-	    //
-	    // See tesseract/pageiterator.h, comment about "Coordinate system".
-	    
-	    symbol_vec.emplace_back(symbol);
-
-	    int left = 0, top = 0, right = 0, bottom = 0;
-	    if (!ri->BoundingBox(tesseract::RIL_SYMBOL,
-		  &left, &top, &right, &bottom)) {
-	      std::stringstream ss;
-	      ss << "subtitle " << (si_i + 1) <<
-		", line " << (line_vec.size() + 1) <<
-		": ocr: could not get symbol bounding box";
-	      throw generic_exception(ss.str());
-	    }
-	    symbol_bbox_vec.emplace_back(
-	      cv::Rect(left, top, right - left, bottom - top));
-
-	    delete[] symbol;
-	    symbol = NULL;
-
-	  } while (!ri->IsAtFinalElement(tesseract::RIL_WORD, tesseract::RIL_SYMBOL));
-
-	  word_vec.emplace_back(
-	      si_i + 1,
-	      line_vec.size() + 1,
-	      word_vec.size() + 1,
-	      std::move(symbol_vec));
-
-	  int left = 0, top = 0, right = 0, bottom = 0;
-	  if (!ri->BoundingBox(tesseract::RIL_WORD,
-		&left, &top, &right, &bottom)) {
-	    std::stringstream ss;
-	    ss << "subtitle " << (si_i + 1) <<
-	      ", line " << (line_vec.size() + 1) <<
-	      ": ocr: could not get word bounding box";
-	    throw generic_exception(ss.str());
-	  }
-	  word_bbox_vec.emplace_back(
-	    cv::Rect(left, top, right - left, bottom - top));
-	} while (!ri->IsAtFinalElement(tesseract::RIL_TEXTLINE, tesseract::RIL_SYMBOL));
-
-	while (si_i < batch_end_i && subtitle_info_vec[si_i].combined_line_bbox_vec.size() == 0) {
-	  si_i++;
-	}
-
-	if (si_i < batch_end_i) {
-	  const SubtitleInfo& si = subtitle_info_vec[si_i];
-
-	  line_vec.emplace_back(
-	      si_i + 1,
-	      line_vec.size() + 1,
-	      word_vec,
-	      si.combined_line_bbox_vec[line_vec.size()],
-	      word_bbox_vec,
-	      symbol_bbox_vec);
-
-	  if (line_vec.size() == si.combined_line_bbox_vec.size()) {
-	    subtitle_vec.emplace_back(
-		si.subtitle_number,
-		si.start_pts,
-		si.end_pts,
-		combined_img,
-		line_vec);
-
-	    si_i++;
-	  }
+	if (!first) {
+	  ri->Next(tesseract::RIL_SYMBOL);
 	}
 	else {
+	  first = false;
+	}
+
+	// If there is no more text in the image, GetUTF8Text returns NULL.
+	// This can only happen if the image is empty. In all other cases
+	// ri->Next returns false and the loop exits.
+	std::unique_ptr<char[]> symbol(ri->GetUTF8Text(tesseract::RIL_SYMBOL));
+	if (!symbol) {
 	  std::stringstream ss;
-	  ss << "subtitle " << (si_i + 1) <<
+	  ss << "WARNING: subtitle " << (si_i + 1) <<
 	    ", line " << (line_vec.size() + 1) <<
-	    ": ocr: more lines than expected for batch";
+	    ": ocr: image has no text (--batch-size with a larger value may fix this)";
 	  throw generic_exception(ss.str());
 	}
 
-      } while (ri->Next(tesseract::RIL_SYMBOL));
+	// work around bug in tesseract, which recognizes 'I' as '|'
+	// '|' is very unlikely to occur in subtitles.
+	if (symbol[0] == '|')
+	  symbol[0] = 'I';
 
-      delete ri;
-      ri = NULL;
+	// Tesseract's observed behaviour for the subtitles is equivalent
+	// to:
+	// - it calculates bounding boxes in some way, most perfectly
+	//   accurate, but some wildly inaccurate.
+	// - it then sorts the bounding boxes by something like the middle
+	//   of the bbox (sometimes they are not ordered by x coordinate),
+	//   inserting inaccurate bboxes (if any) in the wrong place.
+	// - it then returns the bounding box at index i for the symbol at
+	//   index i.
+	// - the returned bounding box may therefore be of a different
+	//   symbol.
+	// For this reason, we do not immediately assign bounding boxes to
+	// words and symbols, but make a list first, then check and improve
+	// the bounding boxes by using a list of bounding boxes determined
+	// with opencv contour detection, then assign the bounding boxes to
+	// words and symbols.
+	//
+	// The returned bottom and right of the bounding box are exclusive, just
+	// like for the contour bboxes we determine later.
+	//
+	// See tesseract/pageiterator.h, comment about "Coordinate system".
+	
+	symbol_vec.emplace_back(symbol.get());
 
-      if (si_i != batch_end_i) {
+	int left = 0, top = 0, right = 0, bottom = 0;
+	if (!ri->BoundingBox(tesseract::RIL_SYMBOL,
+	      &left, &top, &right, &bottom)) {
+	  std::stringstream ss;
+	  ss << "subtitle " << (si_i + 1) <<
+	    ", line " << (line_vec.size() + 1) <<
+	    ": ocr: could not get symbol bounding box";
+	  throw generic_exception(ss.str());
+	}
+	symbol_bbox_vec.emplace_back(
+	  cv::Rect(left, top, right - left, bottom - top));
+
+      } while (!ri->IsAtFinalElement(tesseract::RIL_WORD, tesseract::RIL_SYMBOL));
+
+      word_vec.emplace_back(
+	  si_i + 1,
+	  line_vec.size() + 1,
+	  word_vec.size() + 1,
+	  std::move(symbol_vec));
+
+      int left = 0, top = 0, right = 0, bottom = 0;
+      if (!ri->BoundingBox(tesseract::RIL_WORD,
+	    &left, &top, &right, &bottom)) {
 	std::stringstream ss;
 	ss << "subtitle " << (si_i + 1) <<
 	  ", line " << (line_vec.size() + 1) <<
-	  ": ocr: fewer lines than expected for batch";
+	  ": ocr: could not get word bounding box";
 	throw generic_exception(ss.str());
+      }
+      word_bbox_vec.emplace_back(
+	cv::Rect(left, top, right - left, bottom - top));
+    } while (!ri->IsAtFinalElement(tesseract::RIL_TEXTLINE, tesseract::RIL_SYMBOL));
+
+    // skip subtitles with blank images
+    while (si_i < batch_end_i && subtitle_info_vec[si_i].combined_line_bbox_vec.size() == 0) {
+      si_i++;
+    }
+
+    if (si_i < batch_end_i) {
+      const SubtitleInfo& si = subtitle_info_vec[si_i];
+
+      line_vec.emplace_back(
+	  si_i + 1,
+	  line_vec.size() + 1,
+	  word_vec,
+	  si.combined_line_bbox_vec[line_vec.size()],
+	  word_bbox_vec,
+	  symbol_bbox_vec);
+
+      if (line_vec.size() == si.combined_line_bbox_vec.size()) {
+	subtitle_vec.emplace_back(
+	    si.subtitle_number,
+	    si.start_pts,
+	    si.end_pts,
+	    combined_img,
+	    line_vec);
+
+	si_i++;
       }
     }
     else {
-      throw generic_exception("ocr: could not get tesseract ResultIterator");
-    }
-  } catch (...) {
-    if (ri) {
-      delete ri;
-      ri = NULL;
-    }
-    if (symbol) {
-      delete[] symbol;
-      symbol = NULL;
+      std::stringstream ss;
+      ss << "subtitle " << (si_i + 1) <<
+	", line " << (line_vec.size() + 1) <<
+	": ocr: more lines than expected for batch";
+      throw generic_exception(ss.str());
     }
 
-    throw;
+  } while (ri->Next(tesseract::RIL_SYMBOL));
+
+  if (si_i != batch_end_i) {
+    std::stringstream ss;
+    ss << "subtitle " << (si_i + 1) <<
+      ", line " << (line_vec.size() + 1) <<
+      ": ocr: fewer lines than expected for batch";
+    throw generic_exception(ss.str());
   }
 }
 
