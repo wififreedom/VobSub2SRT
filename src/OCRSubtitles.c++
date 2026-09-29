@@ -364,7 +364,8 @@ OCRSubtitles::do_ocr(
     msg = e.what();
   }
 
-  // could be out of sync due to OCR not recognizing a line, try to repair
+  // Could be out of sync due to OCR not recognizing any text in an entire line.
+  // Try to repair by splitting the batch, if necessary repeatedly.
   const std::size_t batch_size = batch_end_i - batch_begin_i;
   if (batch_size > 1) {
     const std::size_t batch_split_i = batch_begin_i + (batch_size / 2);
@@ -374,6 +375,153 @@ OCRSubtitles::do_ocr(
     do_ocr(tess_base_api, batch_split_i, batch_end_i);
   }
   else {
+    // The problem is in this one subtitle.
+    // Maybe placing text in front and after can make OCR recognize something.
+
+    // TODO this code is proven to work in at least 1 case, but needs to be cleaned up
+    // - split off the code to create the combined_img
+    // - just replace the subtitle completely, with a nice small img instead of the combined_img.
+    // - if combining with line 1 doesn't work, try a different line
+    // - handle the case where there are two lines in the subtitle
+
+    if (batch_begin_i > 0 &&
+	subtitle_info_vec[batch_begin_i].bw_line_bbox_vec.size() == 1) {
+      if (subtitle_info_vec[0].bw_line_bbox_vec.size()) {
+
+	subtitle_info_vec[batch_begin_i].combined_line_bbox_vec.clear();
+
+	const cv::Rect& line1_bbox = subtitle_info_vec[0].bw_line_bbox_vec[0];
+	const cv::Rect& current_line_bbox = subtitle_info_vec[batch_begin_i].bw_line_bbox_vec[0];
+	const int max_height = std::max(line1_bbox.height, current_line_bbox.height);
+
+	// TODO if possible, align the text of line1 and current line vertically
+
+	const int combined_img_width =
+	  NUM_BORDER_PIXELS /* left border */
+	  + line1_bbox.width
+	  + NUM_BORDER_PIXELS /* horizontal spacing between lines of text */
+	  + current_line_bbox.width
+	  + NUM_BORDER_PIXELS /* horizontal spacing between lines of text */
+	  + line1_bbox.width
+	  + NUM_BORDER_PIXELS /* right border */;
+	const int combined_img_height =
+	  NUM_BORDER_PIXELS /* top border */
+	  + max_height
+	  + NUM_BORDER_PIXELS /* bottom border */;
+
+	// New image with all white pixels
+	cv::Mat combined_img(
+	    combined_img_height,
+	    combined_img_width,
+	    CV_8UC1,
+	    cv::Scalar(255));
+
+	// Place first line of first subtitle in front and after
+	// line of current subtitle.
+	for (std::size_t i = 0; i < 2; i++) {
+	  int x_pos = NUM_BORDER_PIXELS + i * (
+	      line1_bbox.width
+	      + NUM_BORDER_PIXELS
+	      + current_line_bbox.width
+	      + NUM_BORDER_PIXELS);
+
+	  const cv::Rect target_bbox(
+	      x_pos,
+	      NUM_BORDER_PIXELS,
+	      line1_bbox.width,
+	      line1_bbox.height);
+
+	  // Copy line from bw_img into combined image, inverted to have black
+	  // text on white background.
+	  cv::Mat src(subtitle_info_vec[0].bw_img, line1_bbox);
+	  cv::Mat dst(combined_img, target_bbox);
+	  cv::bitwise_not(src, dst);
+	}
+
+	{
+	  const cv::Rect target_bbox(
+	      NUM_BORDER_PIXELS
+	      + line1_bbox.width
+	      + NUM_BORDER_PIXELS,
+	      NUM_BORDER_PIXELS,
+	      current_line_bbox.width,
+	      current_line_bbox.height);
+	  subtitle_info_vec[batch_begin_i].combined_line_bbox_vec.emplace_back(target_bbox);
+
+	  // Copy line from bw_img into combined image, inverted to have black
+	  // text on white background.
+	  cv::Mat src(subtitle_info_vec[batch_begin_i].bw_img, current_line_bbox);
+	  cv::Mat dst(combined_img, target_bbox);
+	  cv::bitwise_not(src, dst);
+	}
+
+	try {
+	  batch_ocr(
+	      tess_base_api,
+	      combined_img,
+	      batch_begin_i,
+	      batch_end_i);
+
+	  // Now we have text, but too much.
+
+	  // get the text of the first line of the first subtitle
+	  std::stringstream subtitle_1_ss;
+	  subtitle_vec[0].write(subtitle_1_ss);
+	  std::string subtitle_1(subtitle_1_ss.str());
+	  // cut off newline and any second line of first subtitle
+	  const std::size_t pos = subtitle_1.find('\n');
+	  subtitle_1.resize(pos);
+
+	  std::stringstream current_line_ss;
+	  subtitle_vec[batch_begin_i].write(current_line_ss);
+	  std::string current_line(current_line_ss.str());
+	  // cut off newline
+	  current_line.pop_back();
+	  if (!current_line.starts_with(subtitle_1) ||
+	      !current_line.ends_with(subtitle_1)) {
+	    // TODO better message
+	    throw generic_exception("could not recover");
+	  }
+	  current_line = current_line.substr(subtitle_1.size(), current_line.size() - (2 * subtitle_1.size()));
+	  // TODO better message
+	  std::cerr << "recovered: " << current_line << std::endl;
+
+	  // Update the text of the OCRSubtitle
+	  std::istringstream iss;
+	  iss.str(current_line);
+	  subtitle_vec[batch_begin_i].read(iss);
+
+	  // Wipe the two instances of first line in combined_img
+	  for (std::size_t i = 0; i < 2; i++) {
+	    int x_pos = NUM_BORDER_PIXELS + i * (
+		line1_bbox.width
+		+ NUM_BORDER_PIXELS
+		+ current_line_bbox.width
+		+ NUM_BORDER_PIXELS);
+
+	    const cv::Rect target_bbox(
+		x_pos,
+		NUM_BORDER_PIXELS,
+		line1_bbox.width,
+		line1_bbox.height);
+
+	    cv::Mat src(
+		line1_bbox.height,
+		line1_bbox.width,
+		CV_8UC1,
+		cv::Scalar(255));
+	    cv::Mat dst(combined_img, target_bbox);
+	    src.copyTo(dst);
+	  }
+
+	  return;
+	}
+	catch (const generic_exception& e) {
+	  std::cerr << e.what() << std::endl;
+	}
+      }
+    }
+
     std::cerr << msg << std::endl;
   }
 }
