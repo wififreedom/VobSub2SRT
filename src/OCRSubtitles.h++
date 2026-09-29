@@ -20,6 +20,7 @@
 #include "OCRSubtitle.h++"
 #include "Replacements.h++"
 
+//#include <opencv2/core.hpp>
 #include <tesseract/baseapi.h>
 
 #ifndef OCRSUBTITLES_HXX
@@ -69,7 +70,7 @@ public:
   do_ocr(
       tesseract::TessBaseAPI& tess_base_api,
       const std::size_t ocr_batch_size,
-      bool const show);
+      const bool show);
 
   void
   correct_ocr(
@@ -97,12 +98,22 @@ public:
 
 private:
   void
+  do_ocr(
+      tesseract::TessBaseAPI& tess_base_api,
+      const std::size_t batch_begin_i,
+      const std::size_t batch_end_i);
+
+  cv::Mat
+  batch_prepare(
+      const std::size_t batch_begin_i,
+      const std::size_t batch_end_i);
+
+  void
   batch_ocr(
       tesseract::TessBaseAPI& tess_base_api,
       const cv::Mat& combined_img,
       const std::size_t batch_i,
-      const std::size_t batch_end_i,
-      bool const show);
+      const std::size_t batch_end_i);
 
   std::ostream&
   write(

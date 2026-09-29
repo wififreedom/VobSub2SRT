@@ -199,86 +199,20 @@ OCRSubtitles::do_ocr(
   }
 
   for (std::size_t batch_i = 0; batch_i < subtitle_info_vec.size(); batch_i += batch_size) {
-    const std::size_t batch_end_i = ((batch_i + batch_size) < subtitle_info_vec.size()) ?
-      (batch_i + batch_size) : subtitle_info_vec.size();
+    const std::size_t batch_end_i =
+      std::min(batch_i + batch_size, subtitle_info_vec.size());
 
-    // Gather information required to calculate combined image dimensions:
-    // - total number of lines
-    // - maximum line bbox width
-    // - maximum line bbox height
-    int line_count = 0;
-    int line_max_width = 0;
-    int line_max_height = 0;
-    for (std::size_t si_i = batch_i; si_i < batch_end_i; si_i++) {
-      if (debug || ((si_i + 1) == debug_subtitle_number)) {
-	std::cerr << "Batch OCR: subtitle " << (si_i + 1) << ", # lines: " <<
-	  subtitle_info_vec[si_i].bw_line_bbox_vec.size() << std::endl;
-      }
-      for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
-	line_count++;
-	line_max_width = std::max(line_max_width, lb_it.width);
-	line_max_height = std::max(line_max_height, lb_it.height);
+    do_ocr(
+	tess_base_api,
+	batch_i,
+	batch_end_i);
+
+    if (show) {
+      for (std::size_t i = batch_i; i < batch_end_i; i++) {
+	std::cout << "Subtitle " << (i + 1) << ": ";
+	subtitle_vec[i].write(std::cout);
       }
     }
-
-    if (debug) {
-      std::cerr << "batch OCR: batch has " << line_count << " lines." << std::endl;
-    }
-
-    // NUM_BORDER_PIXELS is used for the vertical distance between lines as well.
-    const int combined_img_width =
-      NUM_BORDER_PIXELS /* left border */
-      + line_max_width
-      + NUM_BORDER_PIXELS /* right border */;
-    const int combined_img_height =
-      NUM_BORDER_PIXELS /* top border */
-      + (line_count * line_max_height) /* lines */
-      + ((line_count - 1) * NUM_BORDER_PIXELS) /* spacing between lines */
-      + NUM_BORDER_PIXELS /* bottom border */;
-
-    // New image with all white pixels
-    cv::Mat combined_img(
-	combined_img_height,
-	combined_img_width,
-	CV_8UC1,
-	cv::Scalar(255));
-
-    // Copy text lines into image, left-aligned
-    {
-      std::size_t line_i = 0;
-      for (std::size_t si_i = batch_i; si_i < batch_end_i; si_i++) {
-	for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
-	  cv::Rect target_bbox(
-	      NUM_BORDER_PIXELS,
-	      NUM_BORDER_PIXELS + line_i * (line_max_height + NUM_BORDER_PIXELS),
-	      lb_it.width,
-	      lb_it.height);
-	  subtitle_info_vec[si_i].combined_line_bbox_vec.emplace_back(target_bbox);
-
-	  // Ccopy line from bw_img into combined image, inverted to have black
-	  // text on white background.
-	  cv::Mat src(subtitle_info_vec[si_i].bw_img, lb_it);
-	  cv::Mat dst(combined_img, target_bbox);
-	  cv::bitwise_not(src, dst);
-
-	  line_i++;
-	}
-      }
-    }
-
-    if (debug ||
-	(((batch_i + 1) <= debug_subtitle_number) &&
-	 (((batch_i + 1) + batch_size) > debug_subtitle_number))) {
-      if (debug_ext.size()) {
-	std::stringstream ss;
-	ss << subname << "-" << "combined-" << (batch_i + 1) << "-" << batch_size << "." << debug_ext;
-	cv::imwrite(ss.str(), combined_img);
-	std::cerr << "batch OCR: batch image saved as " << ss.str() << std::endl;
-      }
-    }
-
-    // now do ocr.
-    batch_ocr(tess_base_api, combined_img, batch_i, batch_end_i, show);
   }
 }
 
@@ -409,12 +343,140 @@ OCRSubtitles::bboxes_remove() {
 }
 
 void
+OCRSubtitles::do_ocr(
+    tesseract::TessBaseAPI& tess_base_api,
+    const std::size_t batch_begin_i,
+    const std::size_t batch_end_i) {
+
+  std::string msg;
+
+  // now do ocr.
+  try {
+    batch_ocr(
+	tess_base_api,
+	batch_prepare(batch_begin_i, batch_end_i),
+	batch_begin_i,
+	batch_end_i);
+
+    return;
+  }
+  catch (const generic_exception& e) {
+    msg = e.what();
+  }
+
+  // could be out of sync due to OCR not recognizing a line, try to repair
+  const std::size_t batch_size = batch_end_i - batch_begin_i;
+  if (batch_size > 1) {
+    const std::size_t batch_split_i = batch_begin_i + (batch_size / 2);
+
+    do_ocr(tess_base_api, batch_begin_i, batch_split_i);
+
+    do_ocr(tess_base_api, batch_split_i, batch_end_i);
+  }
+  else {
+    std::cerr << msg << std::endl;
+  }
+}
+
+cv::Mat
+OCRSubtitles::batch_prepare(
+    const std::size_t batch_begin_i,
+    const std::size_t batch_end_i) {
+
+  // clear all data set by a previous call to batch_prepare
+  for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
+    subtitle_info_vec[si_i].combined_line_bbox_vec.clear();
+  }
+
+  // Gather information required to calculate combined image dimensions:
+  // - total number of lines
+  // - maximum line bbox width
+  // - maximum line bbox height
+  int line_count = 0;
+  int line_max_width = 0;
+  int line_max_height = 0;
+  for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
+    if (debug || ((si_i + 1) == debug_subtitle_number)) {
+      std::cerr << "Batch OCR: subtitle " << (si_i + 1) << ", # lines: " <<
+	subtitle_info_vec[si_i].bw_line_bbox_vec.size() << std::endl;
+    }
+    for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
+      line_count++;
+      line_max_width = std::max(line_max_width, lb_it.width);
+      line_max_height = std::max(line_max_height, lb_it.height);
+    }
+  }
+
+  if (debug) {
+    std::cerr << "batch OCR: batch has " << line_count << " lines." << std::endl;
+  }
+
+  // NUM_BORDER_PIXELS is used for the vertical distance between lines as well.
+  const int combined_img_width =
+    NUM_BORDER_PIXELS /* left border */
+    + line_max_width
+    + NUM_BORDER_PIXELS /* right border */;
+  const int combined_img_height =
+    NUM_BORDER_PIXELS /* top border */
+    + (line_count * line_max_height) /* lines */
+    + ((line_count - 1) * NUM_BORDER_PIXELS) /* spacing between lines */
+    + NUM_BORDER_PIXELS /* bottom border */;
+
+  // New image with all white pixels
+  cv::Mat combined_img(
+      combined_img_height,
+      combined_img_width,
+      CV_8UC1,
+      cv::Scalar(255));
+
+  // Copy text lines into image, left-aligned
+  {
+    std::size_t line_i = 0;
+    for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
+      for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
+	cv::Rect target_bbox(
+	    NUM_BORDER_PIXELS,
+	    NUM_BORDER_PIXELS + line_i * (line_max_height + NUM_BORDER_PIXELS),
+	    lb_it.width,
+	    lb_it.height);
+	subtitle_info_vec[si_i].combined_line_bbox_vec.emplace_back(target_bbox);
+
+	// Ccopy line from bw_img into combined image, inverted to have black
+	// text on white background.
+	cv::Mat src(subtitle_info_vec[si_i].bw_img, lb_it);
+	cv::Mat dst(combined_img, target_bbox);
+	cv::bitwise_not(src, dst);
+
+	line_i++;
+      }
+    }
+  }
+
+  if (debug ||
+      (((batch_begin_i + 1) <= debug_subtitle_number) &&
+       ((batch_end_i + 1) > debug_subtitle_number))) {
+    if (debug_ext.size()) {
+      std::stringstream ss;
+      ss << subname << "-" << "combined-" << (batch_begin_i + 1) << "-" << (batch_end_i - batch_begin_i) << "." << debug_ext;
+      cv::imwrite(ss.str(), combined_img);
+      std::cerr << "batch OCR: batch image saved as " << ss.str() << std::endl;
+    }
+  }
+
+  return combined_img;
+}
+
+void
 OCRSubtitles::batch_ocr(
     tesseract::TessBaseAPI& tess_base_api,
     const cv::Mat& combined_img,
     const std::size_t batch_i,
-    const std::size_t batch_end_i,
-    const bool show) {
+    const std::size_t batch_end_i) {
+
+  // clear all data set by a previous call to batch_ocr
+  while (subtitle_vec.size() > batch_i) {
+    subtitle_vec.pop_back();
+  }
 
   tess_base_api.SetPageSegMode(tesseract::PSM_SINGLE_BLOCK);
   tess_base_api.SetImage(
@@ -545,11 +607,6 @@ OCRSubtitles::batch_ocr(
 	      word_bbox_vec,
 	      symbol_bbox_vec);
 
-	  if (show) {
-	    std::cout << "Subtitle " << (si_i + 1) << ": ";
-	    line_vec.back().write(std::cout);
-	  }
-
 	  if (line_vec.size() == si.combined_line_bbox_vec.size()) {
 	    subtitle_vec.emplace_back(
 		si.subtitle_number,
@@ -565,21 +622,22 @@ OCRSubtitles::batch_ocr(
 	  std::stringstream ss;
 	  ss << "subtitle " << (si_i + 1) <<
 	    ", line " << (line_vec.size() + 1) <<
-	    ": ocr: too many lines";
+	    ": ocr: more lines than expected for batch";
 	  throw generic_exception(ss.str());
 	}
 
       } while (ri->Next(tesseract::RIL_SYMBOL));
 
+      delete ri;
+      ri = NULL;
+
       if (si_i != batch_end_i) {
 	std::stringstream ss;
 	ss << "subtitle " << (si_i + 1) <<
 	  ", line " << (line_vec.size() + 1) <<
-	  ": ocr: too few lines";
+	  ": ocr: fewer lines than expected for batch";
+	throw generic_exception(ss.str());
       }
-
-      delete ri;
-      ri = NULL;
     }
     else {
       throw generic_exception("ocr: could not get tesseract ResultIterator");
