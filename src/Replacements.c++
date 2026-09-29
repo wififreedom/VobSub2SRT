@@ -43,13 +43,22 @@ Replacements::Replacement::replace(
     const std::string& src,
     std::string& dst) const {
 
-  const std::regex regex(priv_match_pattern, priv_syntax_options);
+  try {
+    const std::regex regex(priv_match_pattern, priv_syntax_options);
 
-  dst = std::regex_replace(
-      src,
-      regex,
-      priv_replacement_pattern,
-      priv_match_flags);
+    dst = std::regex_replace(
+	src,
+	regex,
+	priv_replacement_pattern,
+	priv_match_flags);
+  }
+  catch (const std::exception& e) {
+    std::stringstream ss;
+    ss << "match pattern: >" << priv_match_pattern << "<" <<
+        ", replacement pattern: >" << priv_replacement_pattern << "<" <<
+	": " << e.what();
+    throw generic_exception(ss.str());
+  }
 }
 
 static bool
@@ -59,10 +68,10 @@ read_line(
     int& line_number,
     bool skip_empty_line) {
   do {
+    line_number++;
     if (!std::getline(ifs, line)) {
       return false;
     }
-    line_number++;
 
   } while ((line.size() && line[0] == '#') ||
       (skip_empty_line && std::strspn(line.c_str(), " \t") == line.size()));
@@ -85,10 +94,7 @@ Replacements::read(
     throw generic_exception("Could not open replacements file '" + file_name + "' for reading");
   }
 
-  int line_number = 1;
-  auto cerr_log = [&]() -> std::ostream& {
-    return std::cerr << "'" << file_name << "': line " << line_number << ": ";
-  };
+  int line_number = 0;
 
   std::string header;
   if (!read_line(ifs, header, line_number, true)) {
@@ -117,11 +123,6 @@ Replacements::read(
       throw generic_exception(ss.str());
     }
 
-    if (debug) {
-      cerr_log() << "adding match pattern: ***" << match_pattern << "***" <<
-        ", replacement pattern: ***" << replacement_pattern << "***" << std::endl;
-    }
-
     // add
     repl_vec.emplace_back(
 	(std::regex_constants::ECMAScript |
@@ -130,6 +131,25 @@ Replacements::read(
 	std::regex_constants::format_sed,
 	match_pattern,
 	replacement_pattern);
+
+    // Test the replacements: if one of the regular expressions contains a
+    // syntax error, such as mismatched '(' and ')', report it immediately.
+    try {
+      std::string src, dst;
+      repl_vec.back().replace(src, dst);
+    } catch (const std::exception& e) {
+      std::stringstream ss;
+      ss << "'" << file_name << "': lines " << (line_number - 1) <<
+	" and " << line_number << ": " << e.what();
+      throw generic_exception(ss.str());
+    }
+
+    if (debug) {
+      std::cerr << "'" << file_name << "': lines " << (line_number - 1) <<
+	" and " << line_number << ": " <<
+	"added match pattern: >" << match_pattern << "<" <<
+	", replacement pattern: >" << replacement_pattern << "<" << std::endl;
+    }
 
     // empty line or end of file
     if (!read_line(ifs, tmp, line_number, false)) {
