@@ -618,12 +618,30 @@ void
 OCRSubtitles::batch_ocr(
     tesseract::TessBaseAPI& tess_base_api,
     const cv::Mat& combined_img,
-    const std::size_t batch_i,
-    const std::size_t batch_end_i) {
+    const std::size_t batch_begin_subtitle_i,
+    const std::size_t batch_begin_line_i,
+    const std::size_t batch_end_subtitle_i,
+    const std::size_t batch_end_line_i,
+    std::vector<std::vector<OCRLine>>& subtitle_line_vec) const {
 
-  // clear all data set by a previous call to batch_ocr
-  while (subtitle_vec.size() > batch_i) {
-    subtitle_vec.pop_back();
+  if ((batch_begin_subtitle_i >= batch_end_subtitle_i) ||
+      ((batch_begin_subtitle_i == batch_end_subtitle_i &&
+	batch_begin_line_i >= batch_end_line_i))) {
+    // nothing to do
+    return;
+  }
+
+  if (batch_begin_subtitle_i > subtitle_info_vec.size() ||
+      (batch_end_subtitle_i == subtitle_info_vec.size() &&
+       batch_end_line_i > 0) ||
+      (batch_end_line_i > subtitle_info_vec[batch_begin_subtitle_i].combined_line_bbox_vec.size())) {
+    throw generic_exception("OCRSubtitles::batch_ocr: batch begin out of bounds");
+  }
+
+  if (batch_end_subtitle_i > subtitle_info_vec.size() ||
+      (batch_end_subtitle_i == subtitle_info_vec.size() &&
+       batch_end_line_i > 0)) {
+    throw generic_exception("OCRSubtitles::batch_ocr: batch end out of bounds");
   }
 
   tess_base_api.SetPageSegMode(tesseract::PSM_SINGLE_BLOCK);
@@ -640,7 +658,8 @@ OCRSubtitles::batch_ocr(
     throw generic_exception("ocr: could not get tesseract ResultIterator");
   }
 
-  std::size_t si_i = batch_i; /* subtitle_info_vec index */
+  std::size_t si_i = batch_begin_subtitle_i; /* subtitle_info_vec index */
+  std::size_t line_i = batch_begin_line_i; /* subtitle_info_vec[si_i].combined_line_bbox_vec index */
   std::vector<OCRLine> line_vec;
   std::vector<OCRWord> word_vec;
   std::vector<cv::Rect> word_bbox_vec;
@@ -648,6 +667,20 @@ OCRSubtitles::batch_ocr(
 
   do {
     bool first = true;
+
+    // skip subtitles with blank images
+    while (si_i < batch_end_subtitle_i &&
+	subtitle_info_vec[si_i].combined_line_bbox_vec.size() == 0) {
+      si_i++;
+    }
+
+    if (si_i == batch_end_subtitle_i && line_i == batch_end_line_i) {
+      std::stringstream ss;
+      ss << "subtitle " << (si_i + 1) <<
+	", line " << (line_i + 1) <<
+	": ocr: more lines than expected for batch";
+      throw generic_exception(ss.str());
+    }
 
     do {
       std::vector<OCRSymbol> symbol_vec;
@@ -667,7 +700,7 @@ OCRSubtitles::batch_ocr(
 	if (!symbol) {
 	  std::stringstream ss;
 	  ss << "WARNING: subtitle " << (si_i + 1) <<
-	    ", line " << (line_vec.size() + 1) <<
+	    ", line " << (line_i + 1) <<
 	    ": ocr: image has no text (--batch-size with a larger value may fix this)";
 	  throw generic_exception(ss.str());
 	}
@@ -706,7 +739,7 @@ OCRSubtitles::batch_ocr(
 	      &left, &top, &right, &bottom)) {
 	  std::stringstream ss;
 	  ss << "subtitle " << (si_i + 1) <<
-	    ", line " << (line_vec.size() + 1) <<
+	    ", line " << (line_i + 1) <<
 	    ": ocr: could not get symbol bounding box";
 	  throw generic_exception(ss.str());
 	}
@@ -717,7 +750,7 @@ OCRSubtitles::batch_ocr(
 
       word_vec.emplace_back(
 	  si_i + 1,
-	  line_vec.size() + 1,
+	  line_i + 1,
 	  word_vec.size() + 1,
 	  std::move(symbol_vec));
 
@@ -726,7 +759,7 @@ OCRSubtitles::batch_ocr(
 	    &left, &top, &right, &bottom)) {
 	std::stringstream ss;
 	ss << "subtitle " << (si_i + 1) <<
-	  ", line " << (line_vec.size() + 1) <<
+	  ", line " << (line_i + 1) <<
 	  ": ocr: could not get word bounding box";
 	throw generic_exception(ss.str());
       }
@@ -734,49 +767,71 @@ OCRSubtitles::batch_ocr(
 	cv::Rect(left, top, right - left, bottom - top));
     } while (!ri->IsAtFinalElement(tesseract::RIL_TEXTLINE, tesseract::RIL_SYMBOL));
 
-    // skip subtitles with blank images
-    while (si_i < batch_end_i && subtitle_info_vec[si_i].combined_line_bbox_vec.size() == 0) {
+    const SubtitleInfo& si = subtitle_info_vec[si_i];
+
+    // To avoid making a copy, the OCRLine constructor swaps word_vec,
+    // word_bbox_vec, and symbol_bbox_vec with empty vectors, so they are
+    // empty after this.
+    line_vec.emplace_back(
+	si_i + 1,
+	line_i + 1,
+	combined_img,
+	word_vec,
+	si.combined_line_bbox_vec[line_i],
+	word_bbox_vec,
+	symbol_bbox_vec);
+
+    if ((line_i + 1) == si.combined_line_bbox_vec.size() ||
+	((si_i + 1) == batch_end_subtitle_i && (line_i + 1) == batch_end_line_i)) {
+      std::vector<OCRLine> tmp;
+      tmp.swap(line_vec);
+      // line_vec is now empty, move tmp into subtitle_line_vec
+      subtitle_line_vec.emplace_back(
+	  std::move(tmp));
+
       si_i++;
-    }
-
-    if (si_i < batch_end_i) {
-      const SubtitleInfo& si = subtitle_info_vec[si_i];
-
-      line_vec.emplace_back(
-	  si_i + 1,
-	  line_vec.size() + 1,
-	  word_vec,
-	  si.combined_line_bbox_vec[line_vec.size()],
-	  word_bbox_vec,
-	  symbol_bbox_vec);
-
-      if (line_vec.size() == si.combined_line_bbox_vec.size()) {
-	subtitle_vec.emplace_back(
-	    si.subtitle_number,
-	    si.start_pts,
-	    si.end_pts,
-	    combined_img,
-	    line_vec);
-
-	si_i++;
-      }
+      line_i = 0;
     }
     else {
-      std::stringstream ss;
-      ss << "subtitle " << (si_i + 1) <<
-	", line " << (line_vec.size() + 1) <<
-	": ocr: more lines than expected for batch";
-      throw generic_exception(ss.str());
+      line_i++;
     }
 
   } while (ri->Next(tesseract::RIL_SYMBOL));
 
-  if (si_i != batch_end_i) {
+  if (si_i != batch_end_subtitle_i || line_i != batch_end_line_i) {
     std::stringstream ss;
     ss << "subtitle " << (si_i + 1) <<
-      ", line " << (line_vec.size() + 1) <<
+      ", line " << (line_i + 1) <<
       ": ocr: fewer lines than expected for batch";
     throw generic_exception(ss.str());
+  }
+}
+
+void
+OCRSubtitles::batch_ocr(
+    tesseract::TessBaseAPI& tess_base_api,
+    const cv::Mat& combined_img,
+    const std::size_t batch_begin_subtitle_i,
+    const std::size_t batch_end_subtitle_i) {
+
+  std::vector<std::vector<OCRLine>> subtitle_line_vec;
+
+  batch_ocr(
+      tess_base_api,
+      combined_img,
+      batch_begin_subtitle_i,
+      0,
+      batch_end_subtitle_i,
+      0,
+      subtitle_line_vec);
+
+  for (std::size_t i = 0; i < subtitle_line_vec.size(); i++) {
+    const SubtitleInfo& si = subtitle_info_vec[batch_begin_subtitle_i + i];
+    subtitle_vec.emplace_back(
+	si.subtitle_number,
+	si.start_pts,
+	si.end_pts,
+	subtitle_line_vec[i]);
   }
 }
 

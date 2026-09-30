@@ -112,8 +112,18 @@ private:
   batch_ocr(
       tesseract::TessBaseAPI& tess_base_api,
       const cv::Mat& combined_img,
-      const std::size_t batch_i,
-      const std::size_t batch_end_i);
+      const std::size_t batch_begin_subtitle_i,
+      const std::size_t batch_begin_line_i,
+      const std::size_t batch_end_subtitle_i,
+      const std::size_t batch_end_line_i,
+      std::vector<std::vector<OCRLine>>& subtitle_line_vec) const;
+
+  void
+  batch_ocr(
+      tesseract::TessBaseAPI& tess_base_api,
+      const cv::Mat& combined_img,
+      const std::size_t batch_begin_subtitle_i,
+      const std::size_t batch_end_subtitle_i);
 
   std::ostream&
   write(
