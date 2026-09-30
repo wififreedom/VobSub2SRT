@@ -23,6 +23,8 @@
 # See https://en.cppreference.com/cpp/regex/ecmascript for the full reference.
 #
 # Match pattern basics:
+# .        any character, except a newline.
+# \n       a newline.
 # a|b      a or b
 # [a-c]    a, b, or c.
 # [^a-c]   none of a, b, or c.
@@ -46,6 +48,16 @@
 # \\       a literal backslash
 # \1       whatever the first () in the match pattern matched
 # \2       etc.
+#
+# vobsub2srt combines the subtitle lines of all subtitle images into one text,
+# with a newline at the end of every subtitle line. Then it applies the
+# match/replace patterns.
+# This makes it possible to match sentences that are spread over multiple lines.
+# Nota bene: a '.' does not match a newline, see above. An example:
+#     ([^.][.!?][ \n]*)i
+#     \1I
+# The match pattern matches an "i" after the end of a sentence, and takes into
+# account newlines. The replacement pattern replaces "i" by "I".
 #
 # To get a good result, after replacements have been applied, the number of
 # lines should still be the same, and no lines should have been inserted or
@@ -135,6 +147,11 @@ I
 # Replace with: the number, "½ ", and the multiple of a time period
 ([0-9])% ((seconds)|(minutes)|(hours)|(days)|(weeks)|(months)|(years)|(decades)|(centuries)|(millennia))
 \1½ \2
+
+# Match: The end of a sentence, followed by "i". ".." or "..." is not the end of a sentence.
+# Replace with: The matched end of a sentence, followed by "I".
+([^.][.!?][ \n]*)i
+\1I
 
 \‘
 '
