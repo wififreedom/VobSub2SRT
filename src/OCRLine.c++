@@ -32,12 +32,14 @@
 OCRLine::OCRLine(
     const std::size_t subtitle_number,
     const std::size_t line_number,
+    const cv::Mat& img_arg,
     std::vector<OCRWord>& word_vec_arg,
     const cv::Rect& bbox,
     std::vector<cv::Rect>& word_ocr_bbox_vec_arg,
     std::vector<cv::Rect>& symbol_ocr_bbox_vec_arg)
     : subtitle_number(subtitle_number),
       line_number(line_number),
+      img(img_arg),
       word_vec(),
       priv_bbox(bbox),
       word_ocr_bbox_vec(),
@@ -192,8 +194,6 @@ OCRLine::read(
 bool
 OCRLine::bboxes_assign(
     const std::string& subname,
-    const cv::Mat& img,
-    const std::vector<cv::Rect>& symbol_contour_bbox_vec,
     const TextStats * const stats) {
   // About symbol_contour_bbox_vec: These are bounding boxes for the symbols
   // in the line, detected with (opencv) contour detection. They are
@@ -213,6 +213,14 @@ OCRLine::bboxes_assign(
     cerr_log() << ": bboxes_assign" << (stats ? "" : " (to build stats)") << std::endl;
   }
 
+  std::vector<cv::Rect> symbol_contour_bbox_vec;
+  // Tesseract OCR works best with black text on a white background.
+  // Contour detection works best with white text on a black background:
+  // then the contours are on the inside of the symbols, resulting in
+  // accurate bounding boxes.
+  bboxes_invert_and_detect(img, bbox(), symbol_contour_bbox_vec);
+  bboxes_sort_and_combine(symbol_contour_bbox_vec);
+
   // It's important to improve the quality of the symbol bboxes both for
   // gathering statistics, and for italic detection in general.
   // Problems that can't be fixed by only looking at symbol OCR bboxes and
@@ -228,14 +236,12 @@ OCRLine::bboxes_assign(
   //     infrequently).
   symbol_bboxes_improve(
     stats ? std::string() : subname,
-    img,
     symbol_ocr_bbox_vec,
     symbol_contour_bbox_vec,
     nsv);
 
   word_bboxes_improve(
     stats ? std::string() : subname,
-    img,
     word_ocr_bbox_vec,
     nsv,
     nwv,
@@ -430,7 +436,7 @@ OCRLine::bboxes_assign(
 	  if (debug_ext.size()) {
 	    std::stringstream ss;
 	    ss << subname << "-" << subtitle_number << "-" << line_number << "-" << (word_i + 1) << "-symbol-assigned-bboxes." << debug_ext;
-	    cv::imwrite(ss.str(), word_symbol_bboxes_draw(word_i, img, 128));
+	    cv::imwrite(ss.str(), word_symbol_bboxes_draw(word_i, 128));
 	  }
 	  cerr_log() << ", word " << (word_i + 1) << ": " << word << ": assigned symbol bboxes for word: ";
 	  bboxes_stream(std::cerr, cands) << std::endl;
@@ -455,7 +461,6 @@ OCRLine::bboxes_assign(
 
 void
 OCRLine::build_stats(
-    const cv::Mat& img,
     TextStats& stats) const {
   for (auto& it : word_vec) {
     it.build_stats(img, stats);
@@ -478,7 +483,6 @@ OCRLine::bboxes_remove() {
 
 void
 OCRLine::assign_confidence(
-    const cv::Mat& img,
     const TextStats& stats) {
   for (std::size_t word_i = 0; word_i < word_vec.size(); word_i++) {
     word_vec[word_i].assign_confidence(img, stats);
@@ -566,7 +570,6 @@ OCRLine::bordered_bbox() const {
 // symbol that may have a white column, such as a double-quote.
 bool
 OCRLine::bbox_is_invalid(
-    const cv::Mat& img,
     const cv::Rect& bbox,
     const bool check_all_columns) {
 
@@ -645,7 +648,6 @@ OCRLine::bbox_is_invalid(
 
 void
 OCRLine::symbol_bboxes_remove_invalid(
-    const cv::Mat& img,
     const std::vector<cv::Rect>& src,
     std::vector<cv::Rect>& dst) {
 
@@ -656,7 +658,7 @@ OCRLine::symbol_bboxes_remove_invalid(
   for (auto& it : src) {
     const bool maybe_double_quote = ((it.y + it.height) < dq_y_limit);
 
-    if (!bbox_is_invalid(img, it, !maybe_double_quote)) {
+    if (!bbox_is_invalid(it, !maybe_double_quote)) {
       dst.emplace_back(it);
     }
   }
@@ -874,7 +876,6 @@ OCRLine::symbol_bboxes_remove_overlapped_by_1(
 void
 OCRLine::symbol_bboxes_improve(
     const std::string& subname,
-    const cv::Mat& img,
     const std::vector<cv::Rect>& src, // ocr bboxes
     const std::vector<cv::Rect>& src2, // contour bboxes
     std::vector<cv::Rect>& dst) {
@@ -901,7 +902,7 @@ OCRLine::symbol_bboxes_improve(
 
   std::vector<cv::Rect> tmp, tmp2;
 
-  symbol_bboxes_remove_invalid(img, src, tmp);
+  symbol_bboxes_remove_invalid(src, tmp);
 
   symbol_bboxes_fill_gaps(tmp, src2, tmp2);
 
@@ -953,7 +954,6 @@ OCRLine::word_bboxes_remove_overlapping(
 
 void
 OCRLine::word_bboxes_remove_invalid(
-    const cv::Mat& img,
     const std::vector<cv::Rect>& src, // word bboxes
     std::vector<cv::Rect>& dst,
     const TextStats* const /* stats */) {
@@ -961,7 +961,7 @@ OCRLine::word_bboxes_remove_invalid(
   dst.clear();
 
   for (auto& it : src) {
-    if (!bbox_is_invalid(img, it, false)) {
+    if (!bbox_is_invalid(it, false)) {
       dst.emplace_back(it);
     }
   }
@@ -969,7 +969,6 @@ OCRLine::word_bboxes_remove_invalid(
 
 void
 OCRLine::word_bboxes_remove_too_much_spacing(
-    const cv::Mat& img,
     const std::vector<cv::Rect>& src, // word bboxes
     std::vector<cv::Rect>& dst,
     const TextStats& stats) {
@@ -999,7 +998,6 @@ OCRLine::word_bboxes_remove_too_much_spacing(
 void
 OCRLine::word_bboxes_improve(
     const std::string& subname,
-    const cv::Mat& img,
     const std::vector<cv::Rect>& src,
     const std::vector<cv::Rect>& /* symbol_src */,
     std::vector<cv::Rect>& dst,
@@ -1026,12 +1024,12 @@ OCRLine::word_bboxes_improve(
   if (stats) {
     std::vector<cv::Rect> tmp2;
 
-    word_bboxes_remove_invalid(img, tmp, tmp2, stats);
+    word_bboxes_remove_invalid(tmp, tmp2, stats);
 
-    word_bboxes_remove_too_much_spacing(img, tmp2, dst, *stats);
+    word_bboxes_remove_too_much_spacing(tmp2, dst, *stats);
   }
   else {
-    word_bboxes_remove_invalid(img, tmp, dst, stats);
+    word_bboxes_remove_invalid(tmp, dst, stats);
   }
 
 
@@ -1172,7 +1170,6 @@ OCRLine::bboxes_get_word_candidates(
 cv::Mat
 OCRLine::word_symbol_bboxes_draw(
   std::size_t const word_index,
-  const cv::Mat& img,
   unsigned char grayscale_color) const {
 
   if (word_index > word_vec.size()) {
@@ -1190,7 +1187,6 @@ OCRLine::word_symbol_bboxes_draw(
 
 cv::Mat
 OCRLine::symbol_bboxes_draw(
-  const cv::Mat& img,
   unsigned char grayscale_color) const {
 
   const cv::Rect img_bbox = bordered_bbox();

@@ -30,6 +30,7 @@ public:
   OCRLine(
       const std::size_t subtitle_number,
       const std::size_t line_number,
+      const cv::Mat& img_arg,
       std::vector<OCRWord>& word_vec_arg,
       const cv::Rect& bbox,
       std::vector<cv::Rect>& word_ocr_bbox_vec_arg,
@@ -55,13 +56,10 @@ public:
   bool
   bboxes_assign(
       const std::string& subname,
-      const cv::Mat& img,
-      const std::vector<cv::Rect>& symbol_contour_bbox_vec,
       const TextStats* const stats);
 
   void
   build_stats(
-      const cv::Mat& img,
       TextStats& stats) const;
 
   void
@@ -69,7 +67,6 @@ public:
 
   void
   assign_confidence(
-      const cv::Mat& img,
       const TextStats& stats);
 
   void
@@ -96,7 +93,6 @@ private:
   bordered_bbox() const;
 
   bool bbox_is_invalid(
-      const cv::Mat& img,
       const cv::Rect& bbox,
       const bool check_all_columns);
 
@@ -104,7 +100,6 @@ private:
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_remove_invalid(
-      const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
@@ -156,7 +151,6 @@ private:
   // On return, bboxes in dst are ordered by x coordinate, ascending.
   void symbol_bboxes_improve(
       const std::string& subname,
-      const cv::Mat& img,
       const std::vector<cv::Rect>& src, // ocr bboxes
       const std::vector<cv::Rect>& src2, // contour bboxes
       std::vector<cv::Rect>& dst);
@@ -172,7 +166,6 @@ private:
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_remove_invalid(
-      const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst,
       const TextStats* const stats);
@@ -181,7 +174,6 @@ private:
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_remove_too_much_spacing(
-      const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst,
       const TextStats& stats);
@@ -190,7 +182,6 @@ private:
   // On return, bboxes in dst are ordered by x coordinate, ascending.
   void word_bboxes_improve(
       const std::string& subname,
-      const cv::Mat& img,
       const std::vector<cv::Rect>& src, // word ocr bboxes
       const std::vector<cv::Rect>& symbol_src, // improved symbol bboxes
       std::vector<cv::Rect>& dst,
@@ -226,17 +217,18 @@ private:
   cv::Mat
   word_symbol_bboxes_draw(
     std::size_t const word_index,
-    const cv::Mat& img,
     unsigned char grayscale_color) const;
 
   cv::Mat
   symbol_bboxes_draw(
-    const cv::Mat& img,
     unsigned char grayscale_color) const;
 
 private:
   std::size_t subtitle_number;
   std::size_t line_number;
+
+  // In case of batch OCR: may be a combined image.
+  cv::Mat img;
 
   std::vector<OCRWord> word_vec;
 

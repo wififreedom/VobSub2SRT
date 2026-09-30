@@ -29,15 +29,7 @@ public:
       const std::size_t subtitle_number,
       const uint32_t start_pts,
       const uint32_t end_pts,
-      const cv::Mat& img,
-      std::vector<OCRLine>& line_vec_arg)
-      : subtitle_number(subtitle_number),
-	start_pts(start_pts),
-	end_pts(end_pts),
-	img(img),
-	line_vec() {
-    line_vec.swap(line_vec_arg);
-  }
+      std::vector<OCRLine>& line_vec_arg);
 
   uint32_t
   start_pts_get() const {

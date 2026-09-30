@@ -23,6 +23,18 @@
 
 #include "debug.h++"
 
+OCRSubtitle::OCRSubtitle(
+    const std::size_t subtitle_number,
+    const uint32_t start_pts,
+    const uint32_t end_pts,
+    std::vector<OCRLine>& line_vec_arg)
+    : subtitle_number(subtitle_number),
+      start_pts(start_pts),
+      end_pts(end_pts),
+      line_vec() {
+  line_vec.swap(line_vec_arg);
+}
+
 static std::ostream &
 write_pts(
   std::ostream& os,
@@ -41,18 +53,8 @@ OCRSubtitle::bboxes_assign(
 
   for (std::size_t i = 0; i < line_vec.size(); i++) {
 
-    std::vector<cv::Rect> bbox_vec;
-    // Tesseract OCR works best with black text on a white background.
-    // Contour detection works best with white text on a black background:
-    // then the contours are on the inside of the symbols, resulting in
-    // accurate bounding boxes.
-    bboxes_invert_and_detect(img, line_vec[i].bbox(), bbox_vec);
-    bboxes_sort_and_combine(bbox_vec);
-
     line_vec[i].bboxes_assign(
       subname,
-      img,
-      bbox_vec,
       stats);
   }
 }
@@ -61,7 +63,7 @@ void
 OCRSubtitle::build_stats(
     TextStats& stats) const {
   for (auto& it : line_vec) {
-    it.build_stats(img, stats);
+    it.build_stats(stats);
   }
 }
 
@@ -81,7 +83,7 @@ OCRSubtitle::detect_italic(
   for (std::size_t tl_i = 0; tl_i < line_vec.size(); tl_i++) {
     OCRLine& line = line_vec[tl_i];
 
-    line.assign_confidence(img, stats);
+    line.assign_confidence(stats);
 
     line.propagate_word_confidence();
 
