@@ -92,8 +92,7 @@ OCRSubtitles::SubtitleInfo::SubtitleInfo(
 	      CV_8UC1,
 	      (void*) sp_image,
 	      static_cast<std::size_t>(sp_stride)).clone())),
-      bw_line_bbox_vec(),
-      combined_line_bbox_vec() {
+      bw_line_bbox_vec() {
 
   // Convert grayscale to white text on black background.
   // NOTA BENE: if text has grayscale color value < threshold, all text
@@ -208,12 +207,18 @@ OCRSubtitles::do_ocr(
 	batch_end_i);
 
     if (show) {
-      for (std::size_t i = batch_i; i < batch_end_i; i++) {
-	std::cout << "Subtitle " << (i + 1) << ": ";
-	subtitle_vec[i].write(std::cout);
+      for (std::size_t subtitle_i = batch_i; subtitle_i < batch_end_i; subtitle_i++) {
+	for (std::size_t line_i = 0; line_i < subtitle_vec[subtitle_i].num_lines(); line_i++) { 
+	  std::cout << "Subtitle " << (subtitle_i + 1) << ": ";
+	  subtitle_vec[subtitle_i].write_line(std::cout, line_i);
+	}
       }
     }
   }
+
+  // If there were any problems performing OCR on some subtitle lines,
+  // attempt to recover.
+  recover(tess_base_api, show);
 }
 
 void
@@ -345,18 +350,16 @@ OCRSubtitles::bboxes_remove() {
 void
 OCRSubtitles::do_ocr(
     tesseract::TessBaseAPI& tess_base_api,
-    const std::size_t batch_begin_i,
-    const std::size_t batch_end_i) {
+    const std::size_t batch_begin_subtitle_i,
+    const std::size_t batch_end_subtitle_i) {
 
   std::string msg;
 
-  // now do ocr.
   try {
     batch_ocr(
 	tess_base_api,
-	batch_prepare(batch_begin_i, batch_end_i),
-	batch_begin_i,
-	batch_end_i);
+	batch_begin_subtitle_i,
+	batch_end_subtitle_i);
 
     return;
   }
@@ -366,175 +369,38 @@ OCRSubtitles::do_ocr(
 
   // Could be out of sync due to OCR not recognizing any text in an entire line.
   // Try to repair by splitting the batch, if necessary repeatedly.
-  const std::size_t batch_size = batch_end_i - batch_begin_i;
+  const std::size_t batch_size = batch_end_subtitle_i - batch_begin_subtitle_i;
   if (batch_size > 1) {
-    const std::size_t batch_split_i = batch_begin_i + (batch_size / 2);
+    const std::size_t batch_split_subtitle_i =
+      batch_begin_subtitle_i + (batch_size / 2);
 
-    do_ocr(tess_base_api, batch_begin_i, batch_split_i);
+    do_ocr(tess_base_api, batch_begin_subtitle_i, batch_split_subtitle_i);
 
-    do_ocr(tess_base_api, batch_split_i, batch_end_i);
+    do_ocr(tess_base_api, batch_split_subtitle_i, batch_end_subtitle_i);
   }
   else {
-    // The problem is in this one subtitle.
-    // Maybe placing text in front and after can make OCR recognize something.
+    // The problem is in (one of) the lines of this one subtitle.
+    // Insert an empty subtitle for now, and try to recover later, when there are
+    // more successful OCR results to work with for recovery.
 
-    // TODO this code is proven to work in at least 1 case, but needs to be cleaned up
-    // - split off the code to create the combined_img
-    // - just replace the subtitle completely, with a nice small img instead of the combined_img.
-    // - if combining with line 1 doesn't work, try a different line
-    // - handle the case where there are two lines in the subtitle
+    const SubtitleInfo& si = subtitle_info_vec[batch_begin_subtitle_i];
 
-    if (batch_begin_i > 0 &&
-	subtitle_info_vec[batch_begin_i].bw_line_bbox_vec.size() == 1) {
-      if (subtitle_info_vec[0].bw_line_bbox_vec.size()) {
+    std::vector<OCRLine> line_vec;
+    subtitle_vec.emplace_back(
+	si.subtitle_number,
+	si.start_pts,
+	si.end_pts,
+	line_vec);
 
-	subtitle_info_vec[batch_begin_i].combined_line_bbox_vec.clear();
-
-	const cv::Rect& line1_bbox = subtitle_info_vec[0].bw_line_bbox_vec[0];
-	const cv::Rect& current_line_bbox = subtitle_info_vec[batch_begin_i].bw_line_bbox_vec[0];
-	const int max_height = std::max(line1_bbox.height, current_line_bbox.height);
-
-	// TODO if possible, align the text of line1 and current line vertically
-
-	const int combined_img_width =
-	  NUM_BORDER_PIXELS /* left border */
-	  + line1_bbox.width
-	  + NUM_BORDER_PIXELS /* horizontal spacing between lines of text */
-	  + current_line_bbox.width
-	  + NUM_BORDER_PIXELS /* horizontal spacing between lines of text */
-	  + line1_bbox.width
-	  + NUM_BORDER_PIXELS /* right border */;
-	const int combined_img_height =
-	  NUM_BORDER_PIXELS /* top border */
-	  + max_height
-	  + NUM_BORDER_PIXELS /* bottom border */;
-
-	// New image with all white pixels
-	cv::Mat combined_img(
-	    combined_img_height,
-	    combined_img_width,
-	    CV_8UC1,
-	    cv::Scalar(255));
-
-	// Place first line of first subtitle in front and after
-	// line of current subtitle.
-	for (std::size_t i = 0; i < 2; i++) {
-	  int x_pos = NUM_BORDER_PIXELS + i * (
-	      line1_bbox.width
-	      + NUM_BORDER_PIXELS
-	      + current_line_bbox.width
-	      + NUM_BORDER_PIXELS);
-
-	  const cv::Rect target_bbox(
-	      x_pos,
-	      NUM_BORDER_PIXELS,
-	      line1_bbox.width,
-	      line1_bbox.height);
-
-	  // Copy line from bw_img into combined image, inverted to have black
-	  // text on white background.
-	  cv::Mat src(subtitle_info_vec[0].bw_img, line1_bbox);
-	  cv::Mat dst(combined_img, target_bbox);
-	  cv::bitwise_not(src, dst);
-	}
-
-	{
-	  const cv::Rect target_bbox(
-	      NUM_BORDER_PIXELS
-	      + line1_bbox.width
-	      + NUM_BORDER_PIXELS,
-	      NUM_BORDER_PIXELS,
-	      current_line_bbox.width,
-	      current_line_bbox.height);
-	  subtitle_info_vec[batch_begin_i].combined_line_bbox_vec.emplace_back(target_bbox);
-
-	  // Copy line from bw_img into combined image, inverted to have black
-	  // text on white background.
-	  cv::Mat src(subtitle_info_vec[batch_begin_i].bw_img, current_line_bbox);
-	  cv::Mat dst(combined_img, target_bbox);
-	  cv::bitwise_not(src, dst);
-	}
-
-	try {
-	  batch_ocr(
-	      tess_base_api,
-	      combined_img,
-	      batch_begin_i,
-	      batch_end_i);
-
-	  // Now we have text, but too much.
-
-	  // get the text of the first line of the first subtitle
-	  std::stringstream subtitle_1_ss;
-	  subtitle_vec[0].write(subtitle_1_ss);
-	  std::string subtitle_1(subtitle_1_ss.str());
-	  // cut off newline and any second line of first subtitle
-	  const std::size_t pos = subtitle_1.find('\n');
-	  subtitle_1.resize(pos);
-
-	  std::stringstream current_line_ss;
-	  subtitle_vec[batch_begin_i].write(current_line_ss);
-	  std::string current_line(current_line_ss.str());
-	  // cut off newline
-	  current_line.pop_back();
-	  if (!current_line.starts_with(subtitle_1) ||
-	      !current_line.ends_with(subtitle_1)) {
-	    // TODO better message
-	    throw generic_exception("could not recover");
-	  }
-	  current_line = current_line.substr(subtitle_1.size(), current_line.size() - (2 * subtitle_1.size()));
-	  // TODO better message
-	  std::cerr << "recovered: " << current_line << std::endl;
-
-	  // Update the text of the OCRSubtitle
-	  std::istringstream iss;
-	  iss.str(current_line);
-	  subtitle_vec[batch_begin_i].read(iss);
-
-	  // Wipe the two instances of first line in combined_img
-	  for (std::size_t i = 0; i < 2; i++) {
-	    int x_pos = NUM_BORDER_PIXELS + i * (
-		line1_bbox.width
-		+ NUM_BORDER_PIXELS
-		+ current_line_bbox.width
-		+ NUM_BORDER_PIXELS);
-
-	    const cv::Rect target_bbox(
-		x_pos,
-		NUM_BORDER_PIXELS,
-		line1_bbox.width,
-		line1_bbox.height);
-
-	    cv::Mat src(
-		line1_bbox.height,
-		line1_bbox.width,
-		CV_8UC1,
-		cv::Scalar(255));
-	    cv::Mat dst(combined_img, target_bbox);
-	    src.copyTo(dst);
-	  }
-
-	  return;
-	}
-	catch (const generic_exception& e) {
-	  std::cerr << e.what() << std::endl;
-	}
-      }
-    }
-
-    std::cerr << msg << std::endl;
+    std::cerr << msg << ", will attempt to recover" << std::endl;
   }
 }
 
 cv::Mat
 OCRSubtitles::batch_prepare(
     const std::size_t batch_begin_i,
-    const std::size_t batch_end_i) {
-
-  // clear all data set by a previous call to batch_prepare
-  for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
-    subtitle_info_vec[si_i].combined_line_bbox_vec.clear();
-  }
+    const std::size_t batch_end_i,
+    std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec) const {
 
   // Gather information required to calculate combined image dimensions:
   // - total number of lines
@@ -581,13 +447,14 @@ OCRSubtitles::batch_prepare(
   {
     std::size_t line_i = 0;
     for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
+      combined_line_bbox_vec_vec.emplace_back();
       for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
 	const cv::Rect target_bbox(
 	    NUM_BORDER_PIXELS,
 	    NUM_BORDER_PIXELS + line_i * (line_max_height + NUM_BORDER_PIXELS),
 	    lb_it.width,
 	    lb_it.height);
-	subtitle_info_vec[si_i].combined_line_bbox_vec.emplace_back(target_bbox);
+	combined_line_bbox_vec_vec[si_i - batch_begin_i].emplace_back(target_bbox);
 
 	// Copy line from bw_img into combined image, inverted to have black
 	// text on white background.
@@ -618,30 +485,18 @@ void
 OCRSubtitles::batch_ocr(
     tesseract::TessBaseAPI& tess_base_api,
     const cv::Mat& combined_img,
+    const std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec,
     const std::size_t batch_begin_subtitle_i,
     const std::size_t batch_begin_line_i,
-    const std::size_t batch_end_subtitle_i,
-    const std::size_t batch_end_line_i,
     std::vector<std::vector<OCRLine>>& subtitle_line_vec) const {
 
-  if ((batch_begin_subtitle_i >= batch_end_subtitle_i) ||
-      ((batch_begin_subtitle_i == batch_end_subtitle_i &&
-	batch_begin_line_i >= batch_end_line_i))) {
+  if (combined_line_bbox_vec_vec.size() == 0) {
     // nothing to do
     return;
   }
 
-  if (batch_begin_subtitle_i > subtitle_info_vec.size() ||
-      (batch_end_subtitle_i == subtitle_info_vec.size() &&
-       batch_end_line_i > 0) ||
-      (batch_end_line_i > subtitle_info_vec[batch_begin_subtitle_i].combined_line_bbox_vec.size())) {
-    throw generic_exception("OCRSubtitles::batch_ocr: batch begin out of bounds");
-  }
-
-  if (batch_end_subtitle_i > subtitle_info_vec.size() ||
-      (batch_end_subtitle_i == subtitle_info_vec.size() &&
-       batch_end_line_i > 0)) {
-    throw generic_exception("OCRSubtitles::batch_ocr: batch end out of bounds");
+  if (batch_begin_line_i >= combined_line_bbox_vec_vec[0].size()) {
+    throw generic_exception("OCRSubtitles::batch_ocr: batch begin line index out of bounds");
   }
 
   tess_base_api.SetPageSegMode(tesseract::PSM_SINGLE_BLOCK);
@@ -658,26 +513,28 @@ OCRSubtitles::batch_ocr(
     throw generic_exception("ocr: could not get tesseract ResultIterator");
   }
 
-  std::size_t si_i = batch_begin_subtitle_i; /* subtitle_info_vec index */
-  std::size_t line_i = batch_begin_line_i; /* subtitle_info_vec[si_i].combined_line_bbox_vec index */
+  std::size_t rel_si_i = 0;
+  std::size_t rel_line_i = 0; /* combined_line_bbox_vec_vec[rel_si_i] index */
   std::vector<OCRLine> line_vec;
   std::vector<OCRWord> word_vec;
   std::vector<cv::Rect> word_bbox_vec;
   std::vector<cv::Rect> symbol_bbox_vec;
+  std::size_t subtitle_number = batch_begin_subtitle_i + 1;
+  std::size_t line_number = batch_begin_line_i + 1;
 
   do {
     bool first = true;
 
     // skip subtitles with blank images
-    while (si_i < batch_end_subtitle_i &&
-	subtitle_info_vec[si_i].combined_line_bbox_vec.size() == 0) {
-      si_i++;
+    while (rel_si_i < combined_line_bbox_vec_vec.size() &&
+	combined_line_bbox_vec_vec[rel_si_i].size() == 0) {
+      rel_si_i++;
     }
 
-    if (si_i == batch_end_subtitle_i && line_i == batch_end_line_i) {
+    if (rel_si_i == combined_line_bbox_vec_vec.size()) {
       std::stringstream ss;
-      ss << "subtitle " << (si_i + 1) <<
-	", line " << (line_i + 1) <<
+      ss << "subtitle " << subtitle_number <<
+	", line " << line_number <<
 	": ocr: more lines than expected for batch";
       throw generic_exception(ss.str());
     }
@@ -694,14 +551,14 @@ OCRSubtitles::batch_ocr(
 	}
 
 	// If there is no more text in the image, GetUTF8Text returns NULL.
-	// This can only happen if the image is empty. In all other cases
-	// ri->Next returns false and the loop exits.
+	// This can only happen if Tesseract has not recognized any text in the
+	// image. In all other cases ri->Next returns false and the loop exits.
 	std::unique_ptr<char[]> symbol(ri->GetUTF8Text(tesseract::RIL_SYMBOL));
 	if (!symbol) {
 	  std::stringstream ss;
-	  ss << "WARNING: subtitle " << (si_i + 1) <<
-	    ", line " << (line_i + 1) <<
-	    ": ocr: image has no text (--batch-size with a larger value may fix this)";
+	  ss << "subtitle " << subtitle_number <<
+	    ", line " << line_number <<
+	    ": ocr: no text recognized in the image";
 	  throw generic_exception(ss.str());
 	}
 
@@ -738,8 +595,8 @@ OCRSubtitles::batch_ocr(
 	if (!ri->BoundingBox(tesseract::RIL_SYMBOL,
 	      &left, &top, &right, &bottom)) {
 	  std::stringstream ss;
-	  ss << "subtitle " << (si_i + 1) <<
-	    ", line " << (line_i + 1) <<
+	  ss << "subtitle " << subtitle_number <<
+	    ", line " << line_number <<
 	    ": ocr: could not get symbol bounding box";
 	  throw generic_exception(ss.str());
 	}
@@ -749,8 +606,8 @@ OCRSubtitles::batch_ocr(
       } while (!ri->IsAtFinalElement(tesseract::RIL_WORD, tesseract::RIL_SYMBOL));
 
       word_vec.emplace_back(
-	  si_i + 1,
-	  line_i + 1,
+	  subtitle_number,
+	  line_number,
 	  word_vec.size() + 1,
 	  std::move(symbol_vec));
 
@@ -758,8 +615,8 @@ OCRSubtitles::batch_ocr(
       if (!ri->BoundingBox(tesseract::RIL_WORD,
 	    &left, &top, &right, &bottom)) {
 	std::stringstream ss;
-	ss << "subtitle " << (si_i + 1) <<
-	  ", line " << (line_i + 1) <<
+	ss << "subtitle " << subtitle_number <<
+	  ", line " << line_number <<
 	  ": ocr: could not get word bounding box";
 	throw generic_exception(ss.str());
       }
@@ -767,41 +624,41 @@ OCRSubtitles::batch_ocr(
 	cv::Rect(left, top, right - left, bottom - top));
     } while (!ri->IsAtFinalElement(tesseract::RIL_TEXTLINE, tesseract::RIL_SYMBOL));
 
-    const SubtitleInfo& si = subtitle_info_vec[si_i];
-
     // To avoid making a copy, the OCRLine constructor swaps word_vec,
     // word_bbox_vec, and symbol_bbox_vec with empty vectors, so they are
     // empty after this.
     line_vec.emplace_back(
-	si_i + 1,
-	line_i + 1,
+	subtitle_number,
+	line_number,
 	combined_img,
 	word_vec,
-	si.combined_line_bbox_vec[line_i],
+	combined_line_bbox_vec_vec[rel_si_i][rel_line_i],
 	word_bbox_vec,
 	symbol_bbox_vec);
 
-    if ((line_i + 1) == si.combined_line_bbox_vec.size() ||
-	((si_i + 1) == batch_end_subtitle_i && (line_i + 1) == batch_end_line_i)) {
+    if ((rel_line_i + 1) == combined_line_bbox_vec_vec[rel_si_i].size()) {
       std::vector<OCRLine> tmp;
       tmp.swap(line_vec);
       // line_vec is now empty, move tmp into subtitle_line_vec
       subtitle_line_vec.emplace_back(
 	  std::move(tmp));
 
-      si_i++;
-      line_i = 0;
+      rel_si_i++;
+      subtitle_number++;
+      rel_line_i = 0;
+      line_number = 1;
     }
     else {
-      line_i++;
+      rel_line_i++;
+      line_number++;
     }
 
   } while (ri->Next(tesseract::RIL_SYMBOL));
 
-  if (si_i != batch_end_subtitle_i || line_i != batch_end_line_i) {
+  if (rel_si_i != combined_line_bbox_vec_vec.size()) {
     std::stringstream ss;
-    ss << "subtitle " << (si_i + 1) <<
-      ", line " << (line_i + 1) <<
+    ss << "subtitle " << (batch_begin_subtitle_i + rel_si_i + 1) <<
+      ", line " << (rel_line_i + 1) <<
       ": ocr: fewer lines than expected for batch";
     throw generic_exception(ss.str());
   }
@@ -810,18 +667,22 @@ OCRSubtitles::batch_ocr(
 void
 OCRSubtitles::batch_ocr(
     tesseract::TessBaseAPI& tess_base_api,
-    const cv::Mat& combined_img,
     const std::size_t batch_begin_subtitle_i,
     const std::size_t batch_end_subtitle_i) {
 
+  std::vector<std::vector<cv::Rect>> combined_line_bbox_vec_vec;
   std::vector<std::vector<OCRLine>> subtitle_line_vec;
+
+  const cv::Mat combined_img(batch_prepare(
+      batch_begin_subtitle_i,
+      batch_end_subtitle_i,
+      combined_line_bbox_vec_vec));
 
   batch_ocr(
       tess_base_api,
       combined_img,
+      combined_line_bbox_vec_vec,
       batch_begin_subtitle_i,
-      0,
-      batch_end_subtitle_i,
       0,
       subtitle_line_vec);
 
@@ -832,6 +693,287 @@ OCRSubtitles::batch_ocr(
 	si.start_pts,
 	si.end_pts,
 	subtitle_line_vec[i]);
+  }
+}
+
+cv::Mat
+OCRSubtitles::recover_prepare(
+    const std::size_t subtitle_i,
+    const std::size_t line_i,
+    const std::size_t filler_subtitle_i,
+    const std::size_t filler_line_i,
+    std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec) {
+
+  const SubtitleInfo& si = subtitle_info_vec[subtitle_i];
+  const SubtitleInfo& filler_si = subtitle_info_vec[filler_subtitle_i];
+
+  const cv::Rect& bbox = si.bw_line_bbox_vec[line_i];
+  const cv::Rect& filler_bbox = filler_si.bw_line_bbox_vec[filler_line_i];
+  const int max_height = std::max(bbox.height, filler_bbox.height);
+
+  // TODO if possible, align the text of filler line and line vertically
+
+  const int combined_img_width =
+    NUM_BORDER_PIXELS /* left border */
+    + filler_bbox.width
+    + NUM_BORDER_PIXELS /* horizontal spacing between lines of text */
+    + bbox.width
+    + NUM_BORDER_PIXELS /* horizontal spacing between lines of text */
+    + filler_bbox.width
+    + NUM_BORDER_PIXELS /* right border */;
+  const int combined_img_height =
+    NUM_BORDER_PIXELS /* top border */
+    + max_height
+    + NUM_BORDER_PIXELS /* bottom border */;
+
+  // New image with all white pixels
+  cv::Mat combined_img(
+      combined_img_height,
+      combined_img_width,
+      CV_8UC1,
+      cv::Scalar(255));
+
+  // Copy filler line in front of and behind the line to recoveer.
+  for (std::size_t i = 0; i < 2; i++) {
+    int x_pos = NUM_BORDER_PIXELS + i * (
+	filler_bbox.width
+	+ NUM_BORDER_PIXELS
+	+ bbox.width
+	+ NUM_BORDER_PIXELS);
+
+    const cv::Rect target_bbox(
+	x_pos,
+	NUM_BORDER_PIXELS,
+	filler_bbox.width,
+	filler_bbox.height);
+
+    // Copy line from bw_img into combined image, inverted to have black
+    // text on white background.
+    cv::Mat src(filler_si.bw_img, filler_bbox);
+    cv::Mat dst(combined_img, target_bbox);
+    cv::bitwise_not(src, dst);
+  }
+
+  // Copy the line to recover
+  {
+    const cv::Rect target_bbox(
+	NUM_BORDER_PIXELS
+	+ filler_bbox.width
+	+ NUM_BORDER_PIXELS,
+	NUM_BORDER_PIXELS,
+	bbox.width,
+	bbox.height);
+    combined_line_bbox_vec_vec.emplace_back();
+    combined_line_bbox_vec_vec[0].emplace_back(target_bbox);
+
+    // Copy line from bw_img into combined image, inverted to have black
+    // text on white background.
+    cv::Mat src(si.bw_img, bbox);
+    cv::Mat dst(combined_img, target_bbox);
+    cv::bitwise_not(src, dst);
+  }
+
+  return combined_img;
+}
+
+void
+OCRSubtitles::recover_wipe(
+    cv::Mat& combined_img,
+    const std::size_t subtitle_i,
+    const std::size_t line_i,
+    const std::size_t filler_subtitle_i,
+    const std::size_t filler_line_i) {
+
+  const SubtitleInfo& si = subtitle_info_vec[subtitle_i];
+  const SubtitleInfo& filler_si = subtitle_info_vec[filler_subtitle_i];
+
+  const cv::Rect& bbox = si.bw_line_bbox_vec[line_i];
+  const cv::Rect& filler_bbox = filler_si.bw_line_bbox_vec[filler_line_i];
+
+  // Wipe the two instances of filler line in combined_img
+  for (std::size_t i = 0; i < 2; i++) {
+    int x_pos = NUM_BORDER_PIXELS + i * (
+	filler_bbox.width
+	+ NUM_BORDER_PIXELS
+	+ bbox.width
+	+ NUM_BORDER_PIXELS);
+
+    const cv::Rect target_bbox(
+	x_pos,
+	NUM_BORDER_PIXELS,
+	filler_bbox.width,
+	filler_bbox.height);
+
+    cv::Mat src(
+	filler_bbox.height,
+	filler_bbox.width,
+	CV_8UC1,
+	cv::Scalar(255));
+    cv::Mat dst(combined_img, target_bbox);
+    src.copyTo(dst);
+  }
+}
+
+OCRLine
+OCRSubtitles::recover_line(
+    tesseract::TessBaseAPI& tess_base_api,
+    const std::size_t subtitle_i,
+    const std::size_t line_i,
+    const std::size_t filler_subtitle_i,
+    const std::size_t filler_line_i) {
+
+  std::vector<std::vector<cv::Rect>> combined_line_bbox_vec_vec;
+
+  cv::Mat combined_img(recover_prepare(
+	subtitle_i,
+	line_i,
+	filler_subtitle_i,
+	filler_line_i,
+	combined_line_bbox_vec_vec));
+
+  std::vector<std::vector<OCRLine>> subtitle_line_vec;
+
+  batch_ocr(
+      tess_base_api,
+      combined_img,
+      combined_line_bbox_vec_vec,
+      subtitle_i,
+      line_i,
+      subtitle_line_vec);
+
+  // get the text of filler line
+  std::stringstream filler_line_ss;
+  subtitle_vec[filler_subtitle_i].write_line(filler_line_ss, filler_line_i);
+  std::string filler_line(filler_line_ss.str());
+  // cut off newline
+  filler_line.pop_back();
+
+  // get the text of the combined line
+  std::stringstream line_ss;
+  subtitle_line_vec[0][0].write(line_ss);
+  std::string line(line_ss.str());
+  // cut off newline
+  line.pop_back();
+
+  // retrieve the result beteen the filler lines
+  if (!line.starts_with(filler_line) || !line.ends_with(filler_line)) {
+    std::stringstream ss;
+    ss << "subtitle " << (subtitle_i + 1) <<
+      ", line " << (line_i + 1) <<
+      ": could not recover text (filler line mismatch)";
+    throw generic_exception(ss.str());
+  }
+  line = line.substr(filler_line.size(), line.size() - (2 * filler_line.size()));
+  if (line.find_first_not_of(' ') == std::string::npos) {
+    std::stringstream ss;
+    ss << "subtitle " << (subtitle_i + 1) <<
+      ", line " << (line_i + 1) <<
+      ": could not recover text (result is empty)";
+    throw generic_exception(ss.str());
+  }
+
+  std::cerr << "subtitle " << (subtitle_i + 1) <<
+      ", line " << (line_i + 1) <<
+      ": recovered text: " << line << std::endl;
+
+  // Update the text of the OCRLine
+  std::istringstream iss;
+  iss.str(line);
+  subtitle_line_vec[0][0].read(iss);
+
+  // This wipe is required, because:
+  // - The OCRLine has too many OCR bboxes for words and symbols of the fill
+  //   line. These wil automatically be detected as invalid and discarded
+  //   if the image does not contain any black pixels inside the bboxes.
+  // - Contour bboxes are detected over the whole width of the image.
+  recover_wipe(
+      combined_img,
+      subtitle_i,
+      line_i,
+      filler_subtitle_i,
+      filler_line_i);
+
+  return subtitle_line_vec[0][0];
+}
+
+void
+OCRSubtitles::recover_subtitle(
+    tesseract::TessBaseAPI& tess_base_api,
+    const std::size_t subtitle_i,
+    const bool show) {
+
+  const SubtitleInfo& si = subtitle_info_vec[subtitle_i];
+
+  // TODO if combining with the chosen filler line doesn't work, try a different filler line
+
+  // TODO find a subtitle line to use
+  if (subtitle_i > 0 && subtitle_info_vec[0].bw_line_bbox_vec.size()) {
+    // use 0
+  }
+  else {
+    // TODO
+    return;
+  }
+
+  std::vector<OCRLine> line_vec;
+  for (std::size_t line_i = 0; line_i < si.bw_line_bbox_vec.size(); line_i++) {
+
+    try {
+      line_vec.emplace_back(recover_line(
+	  tess_base_api,
+	  subtitle_i,
+	  line_i,
+	  0,
+	  0));
+    }
+    catch (const std::exception& e) {
+
+      std::cerr << e.what() << std::endl;
+
+      std::vector<OCRWord> word_vec;
+      std::vector<cv::Rect> word_ocr_bbox_vec;
+      std::vector<cv::Rect> symbol_ocr_bbox_vec;
+      line_vec.emplace_back(
+	  si.subtitle_number,
+	  line_i + 1,
+	  cv::Mat(),
+	  word_vec,
+	  cv::Rect(0,0,0,0),
+	  word_ocr_bbox_vec,
+	  symbol_ocr_bbox_vec);
+    }
+  }
+
+  subtitle_vec[subtitle_i] = OCRSubtitle(
+      si.subtitle_number,
+      si.start_pts,
+      si.end_pts,
+      line_vec);
+
+  if (show) {
+    for (std::size_t line_i = 0; line_i < subtitle_vec[subtitle_i].num_lines(); line_i++) {
+      std::cout << "Subtitle " << (subtitle_i + 1) << ": ";
+      subtitle_vec[subtitle_i].write_line(std::cout, line_i);
+    }
+  }
+}
+
+void
+OCRSubtitles::recover(
+    tesseract::TessBaseAPI& tess_base_api,
+    const bool show) {
+
+  if (subtitle_vec.size() != subtitle_info_vec.size()) {
+    throw generic_exception("OCRSubtitles::recover: subtitle_vec size mismatch");
+  }
+
+  for (std::size_t i = 0; i < subtitle_info_vec.size(); ++i) {
+    const SubtitleInfo& si = subtitle_info_vec[i];
+    const OCRSubtitle& subtitle = subtitle_vec[i];
+
+    if (subtitle.num_lines() == 0 && si.bw_line_bbox_vec.size()) {
+      recover_subtitle(tess_base_api, i, show);
+    }
   }
 }
 

@@ -49,7 +49,6 @@ private:
     cv::Mat bw_img;
 
     std::vector<cv::Rect> bw_line_bbox_vec;
-    std::vector<cv::Rect> combined_line_bbox_vec;
   };
 
 public:
@@ -106,24 +105,58 @@ private:
   cv::Mat
   batch_prepare(
       const std::size_t batch_begin_i,
-      const std::size_t batch_end_i);
+      const std::size_t batch_end_i,
+      std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec) const;
 
   void
   batch_ocr(
       tesseract::TessBaseAPI& tess_base_api,
       const cv::Mat& combined_img,
+      const std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec,
       const std::size_t batch_begin_subtitle_i,
       const std::size_t batch_begin_line_i,
-      const std::size_t batch_end_subtitle_i,
-      const std::size_t batch_end_line_i,
       std::vector<std::vector<OCRLine>>& subtitle_line_vec) const;
 
   void
   batch_ocr(
       tesseract::TessBaseAPI& tess_base_api,
-      const cv::Mat& combined_img,
       const std::size_t batch_begin_subtitle_i,
       const std::size_t batch_end_subtitle_i);
+
+  cv::Mat
+  recover_prepare(
+      const std::size_t subtitle_i,
+      const std::size_t line_i,
+      const std::size_t fill_subtitle_i,
+      const std::size_t fill_line_i,
+      std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec);
+
+  void
+  recover_wipe(
+      cv::Mat& combined_img,
+      const std::size_t subtitle_i,
+      const std::size_t line_i,
+      const std::size_t fill_subtitle_i,
+      const std::size_t fill_line_i);
+
+  OCRLine
+  recover_line(
+      tesseract::TessBaseAPI& tess_base_api,
+      const std::size_t subtitle_i,
+      const std::size_t line_i,
+      const std::size_t fill_subtitle_i,
+      const std::size_t fill_line_i);
+
+  void
+  recover_subtitle(
+      tesseract::TessBaseAPI& tess_base_api,
+      const std::size_t subtitle_i,
+      const bool show);
+
+  void
+  recover(
+      tesseract::TessBaseAPI& tess_base_api,
+      const bool show);
 
   std::ostream&
   write(

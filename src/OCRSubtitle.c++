@@ -21,6 +21,7 @@
 
 #include <format>
 
+#include "generic_exception.h++"
 #include "debug.h++"
 
 OCRSubtitle::OCRSubtitle(
@@ -111,6 +112,16 @@ OCRSubtitle::read(
   for (auto& it : line_vec) {
     it.read(is);
   }
+}
+
+std::ostream&
+OCRSubtitle::write_line(
+    std::ostream& os,
+    const std::size_t index) const {
+  if (index >= line_vec.size()) {
+    throw generic_exception("OCRSubtitle::write_line: index out of bounds");
+  }
+  return line_vec[index].write(os);
 }
 
 void

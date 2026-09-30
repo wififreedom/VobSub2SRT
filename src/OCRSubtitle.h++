@@ -36,9 +36,20 @@ public:
     return start_pts;
   }
 
+  std::size_t
+  num_lines() const {
+    return line_vec.size();
+  }
+
   std::ostream&
   write(
       std::ostream& os) const;
+
+  // index is 0-based, so use 0 for first line
+  std::ostream&
+  write_line(
+      std::ostream& os,
+      const std::size_t index) const;
 
   void
   read(
