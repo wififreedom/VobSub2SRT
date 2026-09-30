@@ -379,12 +379,10 @@ OCRSubtitles::do_ocr(
     do_ocr(tess_base_api, batch_split_subtitle_i, batch_end_subtitle_i);
   }
   else {
-    // The problem is in (one of) the lines of this one subtitle.
-    // Insert an empty subtitle for now, and try to recover later, when there are
-    // more successful OCR results to work with for recovery.
-
+    // There is a problem in (one of) the lines of this subtitle.
+    // Insert an empty subtitle for now, and try to recover later, when there
+    // are more successful OCR results to work with for recovery.
     const SubtitleInfo& si = subtitle_info_vec[batch_begin_subtitle_i];
-
     std::vector<OCRLine> line_vec;
     subtitle_vec.emplace_back(
 	si.subtitle_number,
@@ -411,7 +409,7 @@ OCRSubtitles::batch_prepare(
   int line_max_height = 0;
   for (std::size_t si_i = batch_begin_i; si_i < batch_end_i; si_i++) {
     if (debug || ((si_i + 1) == debug_subtitle_number)) {
-      std::cerr << "Batch OCR: subtitle " << (si_i + 1) << ", # lines: " <<
+      std::cerr << "batch OCR: subtitle " << (si_i + 1) << ", # lines: " <<
 	subtitle_info_vec[si_i].bw_line_bbox_vec.size() << std::endl;
     }
     for (const auto& lb_it : subtitle_info_vec[si_i].bw_line_bbox_vec) {
@@ -860,7 +858,7 @@ OCRSubtitles::recover_line(
     std::stringstream ss;
     ss << "subtitle " << (subtitle_i + 1) <<
       ", line " << (line_i + 1) <<
-      ": could not recover text (filler line mismatch)";
+      ": could not recover text (filler line mismatch in the ocr result)";
     throw generic_exception(ss.str());
   }
   line = line.substr(filler_line.size(), line.size() - (2 * filler_line.size()));
@@ -904,32 +902,40 @@ OCRSubtitles::recover_subtitle(
 
   const SubtitleInfo& si = subtitle_info_vec[subtitle_i];
 
-  // TODO if combining with the chosen filler line doesn't work, try a different filler line
-
-  // TODO find a subtitle line to use
-  if (subtitle_i > 0 && subtitle_info_vec[0].bw_line_bbox_vec.size()) {
-    // use 0
-  }
-  else {
-    // TODO
-    return;
-  }
-
   std::vector<OCRLine> line_vec;
   for (std::size_t line_i = 0; line_i < si.bw_line_bbox_vec.size(); line_i++) {
 
-    try {
-      line_vec.emplace_back(recover_line(
-	  tess_base_api,
-	  subtitle_i,
-	  line_i,
-	  0,
-	  0));
+    // try to recover the line
+    bool ok = false;
+    for (std::size_t fsi_i = 0; !ok && fsi_i < subtitle_info_vec.size(); fsi_i++) {
+      if (fsi_i != subtitle_i) {
+	const SubtitleInfo& fsi = subtitle_info_vec[fsi_i];
+	for (std::size_t fli_i = 0; !ok && fli_i < fsi.bw_line_bbox_vec.size(); fli_i++) {
+
+	  try {
+	    line_vec.emplace_back(recover_line(
+		tess_base_api,
+		subtitle_i,
+		line_i,
+		fsi_i,
+		fli_i));
+
+	    ok = true;
+	  }
+	  catch (const std::exception& e) {
+	    if (debug || debug_subtitle_number == (subtitle_i + 1)) {
+	      std::cerr << e.what() << std::endl;
+	    }
+	  }
+	}
+      }
     }
-    catch (const std::exception& e) {
 
-      std::cerr << e.what() << std::endl;
-
+    if (!ok) {
+      std::cerr << "subtitle " << (subtitle_i + 1) <<
+	", line" << (line_i + 1) <<
+	": ocr failed, could not recover text, replacing with empty line" <<
+	std::endl;
       std::vector<OCRWord> word_vec;
       std::vector<cv::Rect> word_ocr_bbox_vec;
       std::vector<cv::Rect> symbol_ocr_bbox_vec;
