@@ -149,6 +149,11 @@ private:
       const std::size_t begin_index /* inclusive */,
       const std::size_t end_index /* exclusive */) const;
 
+  std::ostream&
+  part_write(
+      std::ostream& os,
+      const OCRWordPart& part) const;
+
 private:
   // The number of the subtitle in the OCRSubtitles, starts at 1.
   std::size_t subtitle_number;

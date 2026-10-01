@@ -194,13 +194,13 @@ void
 OCRSymbol::dump(
     std::ostream& os) const {
   os << "      utf8_symbol: " << priv_utf8_symbol;
-  for (std::size_t i = 0; i < priv_bboxes.size(); i++) {
-    const cv::Rect& bbox = priv_bboxes[i];
-    os << ", bbox " << (i + 1) << ": (" <<
+  for (std::size_t i = 1; const auto& bbox : priv_bboxes) {
+    os << ", bbox " << i << ": (" <<
       bbox.x << "," <<
       bbox.y << ")-(" <<
       (bbox.x + bbox.width) << "," <<
       (bbox.y + bbox.height) << ")";
+    i++;
   }
   os << ", ic: " << priv_italic_confidence <<
     std::endl;
@@ -212,8 +212,7 @@ OCRSymbol::bboxes_draw(
   const cv::Rect& line_bbox,
   unsigned char grayscale_color) const {
 
-  for (std::size_t i = 0; i < priv_bboxes.size(); i++) {
-    const cv::Rect& bbox = priv_bboxes[i];
+  for (const auto& bbox : priv_bboxes) {
     cv::rectangle(
 	img,
 	cv::Rect(

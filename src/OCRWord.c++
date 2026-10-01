@@ -24,6 +24,8 @@
 #include "bbox.h++"
 #include "OCRWord.h++"
 
+#include <ranges>
+
 OCRWord::OCRWordPart::OCRWordPart(
     const std::size_t begin_index,
     const std::size_t end_index,
@@ -128,8 +130,8 @@ OCRWord::build_stats(
     const cv::Mat& img,
     TextStats& stats) const {
   // symbols
-  for (std::size_t i = 0; i < symbol_vec.size(); i++) {
-    symbol_vec[i].build_stats(img, stats);
+  for (const auto& it : symbol_vec) {
+    it.build_stats(img, stats);
   }
 
   // symbol spacing within a word
@@ -256,13 +258,12 @@ OCRWord::word_parts_determine() {
 
 float
 OCRWord::begin_confidence() const {
-  for (std::size_t i = 0; i < part_vec.size(); i++) {
-    const OCRWordPart& part = part_vec[i];
+  for (const auto& part : part_vec) {
     if (CONFIDENT_ITALIC(part.italic_confidence) ||
 	CONFIDENT_NOT_ITALIC(part.italic_confidence)) {
       return part.italic_confidence;
     }
-    if (!part_vec[i].is_punct_at_begin && ! part_vec[i].is_punct_at_begin) {
+    if (!part.is_punct_at_begin && !part.is_punct_at_begin) {
       break;
     }
   }
@@ -271,8 +272,7 @@ OCRWord::begin_confidence() const {
 
 float
 OCRWord::end_confidence() const {
-  for (std::size_t i = part_vec.size(); i > 0; i--) {
-    const OCRWordPart& part = part_vec[i - 1];
+  for (const auto& part : part_vec | std::views::reverse) {
     if (CONFIDENT_ITALIC(part.italic_confidence) ||
 	CONFIDENT_NOT_ITALIC(part.italic_confidence)) {
       return part.italic_confidence;
@@ -353,9 +353,7 @@ OCRWord::write_srt(
     return os;
   }
 
-  for (std::size_t i = 0; i < part_vec.size(); ++i) {
-    const OCRWordPart& part = part_vec[i];
-
+  for (const auto& part : part_vec) {
     if (part.is_punct_at_begin) {
       // don't change italic for this part
     }
@@ -387,9 +385,7 @@ OCRWord::write_srt(
     // - for "l'accident", it belongs to the part before.
 
     // write part, including any single quote at the start
-    for (std::size_t j = part.begin_index; j < part.end_index; j++) {
-      symbol_vec[j].write_srt(os);
-    }
+    part_write(os, part);
   }
 
   if (next) {
@@ -399,10 +395,7 @@ OCRWord::write_srt(
     }
     // write remaining punctuation after potential "</i>"
     if (part_vec.size() && part_vec.back().is_punct_at_end) {
-      const OCRWordPart& part = part_vec.back();
-      for (std::size_t j = part.begin_index; j < part.end_index; j++) {
-	symbol_vec[j].write_srt(os);
-      }
+      part_write(os, part_vec.back());
     }
     os << " ";
   }
@@ -410,10 +403,7 @@ OCRWord::write_srt(
     if (entire_line_is_italic) {
       // write remaining punctuation before potential "</i>"
       if (part_vec.size() && part_vec.back().is_punct_at_end) {
-	const OCRWordPart& part = part_vec.back();
-	for (std::size_t j = part.begin_index; j < part.end_index; j++) {
-	  symbol_vec[j].write_srt(os);
-	}
+	part_write(os, part_vec.back());
       }
     }
     if (in_italic) {
@@ -423,10 +413,7 @@ OCRWord::write_srt(
     if (!entire_line_is_italic) {
       // write remaining punctuation after potential "</i>"
       if (part_vec.size() && part_vec.back().is_punct_at_end) {
-	const OCRWordPart& part = part_vec.back();
-	for (std::size_t j = part.begin_index; j < part.end_index; j++) {
-	  symbol_vec[j].write_srt(os);
-	}
+	part_write(os, part_vec.back());
       }
     }
     os << "\n";
@@ -886,8 +873,8 @@ OCRWord::bboxes_assign_repair_too_few_bboxes(
     // Check if there is a symbol without candidate bbox.
     // If so, the attempt failed.
     if (ok) {
-      for (std::size_t sym_i = 0; sym_i < sym_cands.size(); sym_i++) {
-	if (sym_cands[sym_i].size() == 0) {
+      for (const auto& it: sym_cands) {
+	if (it.size() == 0) {
 	  ok = false;
 	  break;
 	}
@@ -950,8 +937,8 @@ OCRWord::bboxes_assign_repair_too_few_bboxes(
 	// assign all remaining candidate bboxes to the symbol
 	if (sym_cands[sym_i].size()) {
 	  std::vector<cv::Rect> bboxes;
-	  for (std::size_t i = 0; i < sym_cands[sym_i].size(); i++) {
-	    bboxes.emplace_back(cands[sym_cands[sym_i][i]]);
+	  for (const auto& it : sym_cands[sym_i]) {
+	    bboxes.emplace_back(cands[it]);
 	  }
 	  symbol1.bboxes_assign(bboxes, test_only);
 	} else {
@@ -989,23 +976,21 @@ OCRWord::dump(std::ostream& os) const {
   os << "  word: ";
   write(os) << std::endl;
   os << "    " << part_vec.size() << " parts:" << std::endl;
-  for (const auto& it : part_vec) {
-    os << "      symbols " << it.begin_index << "-" << (it.end_index - 1) << ": ";
-    for (std::size_t i = it.begin_index; i < it.end_index; i++) {
-      symbol_vec[i].write(os);
-    }
+  for (const auto& part : part_vec) {
+    os << "      symbols " << part.begin_index << "-" << (part.end_index - 1) << ": ";
+    part_write(os, part);
     os << ": ";
-    if (it.is_punct_at_begin) {
+    if (part.is_punct_at_begin) {
       os << "punct at begin, ";
     }
-    if (it.is_punct_at_end) {
+    if (part.is_punct_at_end) {
       os << "punct at end, ";
     }
-    os << "ic: " << it.italic_confidence << std::endl;
+    os << "ic: " << part.italic_confidence << std::endl;
   }
   os << "    " << symbol_vec.size() << " symbols:" << std::endl;
-  for (const auto& it : symbol_vec) {
-    it.dump(os);
+  for (const auto& symbol : symbol_vec) {
+    symbol.dump(os);
   }
 }
 
@@ -1014,8 +999,8 @@ OCRWord::symbol_bboxes_draw(
   const cv::Mat& img,
   const cv::Rect& line_bbox,
   unsigned char grayscale_color) const {
-  for (std::size_t i = 0; i < symbol_vec.size(); i++) {
-    symbol_vec[i].bboxes_draw(img, line_bbox, grayscale_color);
+  for (const auto& symbol : symbol_vec) {
+    symbol.bboxes_draw(img, line_bbox, grayscale_color);
   }
 }
 
@@ -1033,5 +1018,15 @@ OCRWord::italic_confidence(
     sum_confidence += symbol_vec[i].italic_confidence();
   }
   return sum_confidence / (end_index - begin_index);
+}
+
+std::ostream&
+OCRWord::part_write(
+    std::ostream& os,
+    const OCRWordPart& part) const {
+  for (std::size_t i = part.begin_index; i < part.end_index; i++) {
+    symbol_vec[i].write_srt(os);
+  }
+  return os;
 }
 
