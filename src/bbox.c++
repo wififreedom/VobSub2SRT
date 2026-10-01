@@ -39,11 +39,11 @@ bboxes_detect(
 	cv::CHAIN_APPROX_SIMPLE);
   }
 
-  for (std::size_t i = 0; i < contour_vec.size(); i++) {
-    cv::Rect tl_rect = cv::boundingRect(contour_vec[i]);
+  for (const auto& it : contour_vec) {
+    cv::Rect bbox = cv::boundingRect(it);
     // convert back to coordinates in orig img
-    tl_rect.y += line_bbox.y;
-    bbox_vec.push_back(tl_rect);
+    bbox.y += line_bbox.y;
+    bbox_vec.push_back(bbox);
   }
 }
 
@@ -69,11 +69,11 @@ bboxes_invert_and_detect(
        	cv::CHAIN_APPROX_SIMPLE);
   }
 
-  for (std::size_t i = 0; i < contour_vec.size(); i++) {
-    cv::Rect tl_rect = cv::boundingRect(contour_vec[i]);
+  for (const auto& it : contour_vec) {
+    cv::Rect bbox = cv::boundingRect(it);
     // convert back to coordinates in orig img
-    tl_rect.y += line_bbox.y;
-    bbox_vec.push_back(tl_rect);
+    bbox.y += line_bbox.y;
+    bbox_vec.push_back(bbox);
   }
 }
 
@@ -104,12 +104,9 @@ bboxes_sort_and_combine(
   // They are in the top half of the height range.
   int min_y = bbox_vec[0].y;
   int max_y = bbox_vec[0].y + bbox_vec[0].height;
-  for (std::size_t i = 1; i < bbox_vec.size(); i++) {
-    cv::Rect& r = bbox_vec[i];
-    if (r.y < min_y)
-      min_y = r.y;
-    if ((r.y + r.height) > max_y)
-      max_y = r.y + r.height;
+  for (const auto& it : bbox_vec) {
+    min_y = std::min(min_y, it.y);
+    max_y = std::max(max_y, it.y + it.height);
   }
   int double_quote_max_y = min_y + ((max_y - min_y) / 2);
 
@@ -163,11 +160,10 @@ bboxes_draw(
 
     cv::Mat result_img(img.clone());
 
-  for (std::size_t i = 0; i < bbox_vec.size(); i++) {
-    const cv::Rect& rect = bbox_vec[i];
+  for (const auto& it : bbox_vec) {
     cv::rectangle(result_img,
-      cv::Point(rect.x, rect.y),
-      cv::Point(rect.x + rect.width - 1, rect.y + rect.height - 1),
+      cv::Point(it.x, it.y),
+      cv::Point(it.x + it.width - 1, it.y + it.height - 1),
       cv::Scalar(128),
       1);
   }
@@ -184,15 +180,14 @@ bboxes_draw(
   cv::Mat result_img(img_bbox.height, img_bbox.width, img.type());
   cv::Mat(img, img_bbox).copyTo(result_img);
 
-  for (std::size_t i = 0; i < bbox_vec.size(); i++) {
-    const cv::Rect& rect = bbox_vec[i];
+  for (const auto& it : bbox_vec) {
     cv::rectangle(result_img,
       cv::Point(
-	rect.x - img_bbox.x,
-       	rect.y - img_bbox.y),
+	it.x - img_bbox.x,
+	it.y - img_bbox.y),
       cv::Point(
-	rect.x - img_bbox.x + rect.width - 1,
-	rect.y - img_bbox.y + rect.height - 1),
+	it.x - img_bbox.x + it.width - 1,
+	it.y - img_bbox.y + it.height - 1),
       cv::Scalar(128),
       1);
   }
@@ -211,12 +206,12 @@ std::ostream&
 bboxes_stream(
     std::ostream& os,
     const std::vector<cv::Rect>& bbox_vec) {
-  for (std::size_t i = 0; i < bbox_vec.size(); i++) {
-    const cv::Rect& r = bbox_vec[i];
+  for (int i = 0; const auto & it : bbox_vec) {
     if (i > 0)
       os << ", ";
     os << i << ":";
-    bbox_stream(os, r);
+    bbox_stream(os, it);
+    i++;
   }
   return os;
 }
@@ -474,43 +469,69 @@ get_text_line_bboxes(
   for (std::size_t i = 0; i < tmp.size(); i++) {
     cv::Rect& cr = tmp[i];
     if (text_line_bbox_vec.size()) {
+      // there is a previous line
       cv::Rect& pr = text_line_bbox_vec.back();
       if (cr.height < (pr.height / 2)) {
+	// current line height < half the height of the previous line
+	// and has to be merged with prev line or next line
 	if ((i + 1) < tmp.size()) {
+	  // there is a next line
 	  cv::Rect& nr = tmp[i + 1];
 	  if (cr.height < (nr.height / 2)) {
+	    // current line height < half the height of the next line
 	    const int dist_pr = cr.y - (pr.y + pr.height);
 	    const int dist_nr = nr.y - (cr.y + cr.height);
 	    if (dist_pr < dist_nr) {
+	      // current closest to previous line, merge with previous line
 	      pr |= cr;
 	    } else {
+	      // current closest to next line, merge with next line
 	      nr |= cr;
 	    }
 	  }
+	  else {
+	    // next line also has low height, likely has to be merged with
+	    // line after it, so merge with previous line
+	    pr |= cr;
+	  }
 	} else {
+	  // there is no next line, so merge with previous line
 	  pr |= cr;
 	}
       } else if ((i + 1) < tmp.size()) {
+	// current line height >= half the height of the previous line,
+	// but there is a next line as well
 	cv::Rect& nr = tmp[i + 1];
 	if (cr.height < (nr.height / 2)) {
+	  // current line height < half the height of the next line,
+	  // so merge with next line
 	  nr |= cr;
 	}
 	else {
+	  // current line height >= half the height of the prevous line and
+	  // next line, so don't merge
 	  text_line_bbox_vec.emplace_back(cr);
 	}
       } else {
+	// current line height >= half the height of the previous line, and no
+	// next line, so don't merge
 	text_line_bbox_vec.emplace_back(cr);
       }
     } else if ((i + 1) < tmp.size()) {
+      // no previous line, but a next line
       cv::Rect& nr = tmp[i + 1];
       if (cr.height < (nr.height / 2)) {
+	// current line height < half the height of the next line, so merge
 	nr |= cr;
       }
       else {
+	// current line height >= half the height of the next line, so don't
+	// merge
 	text_line_bbox_vec.emplace_back(cr);
       }
     }
     else {
+      // no prevous or next line, nothing to merge with
       text_line_bbox_vec.emplace_back(cr);
     }
   }
