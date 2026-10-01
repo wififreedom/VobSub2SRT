@@ -43,15 +43,55 @@ public:
       const std::string& ifo_file_name,
       const int y_threshold);
 
-  void close();
+  // returns false on end of stream
+  // else, fills in the public data members below.
+  bool next();
 
-  spu_t spu();
+  void close();
 
   vob_t vob();
 
 private:
+  void
+  reset_public();
+
+  void
+  reset_private();
+
+public:
+  // Image display start time.
+  // To convert to milliseconds, divide by 90.
+  unsigned start_pts;
+
+  // Image display end time.
+  // To convert to milliseconds, divide by 90.
+  unsigned end_pts;
+
+  // Image data, property of spudec module, do not modify or deallocate.
+  // One byte per pixel.
+  // Data pointed to by sp_image persists until the next call to
+  // VobSub::next() or VobSub.close().
+  const unsigned char* sp_image;
+
+  // Image width, in pixels = bytes.
+  unsigned sp_width;
+
+  // Image height, in pixels = bytes.
+  unsigned sp_height;
+
+  // sp_stride is sp_width, but rounded up to align the image rows to some power of 2.
+  // Pixel 0 of row X is at sp_image[X * sp_stride].
+  unsigned sp_stride;
+
+  // Image size, in bytes. Should be at least sp_height * sp_stride.
+  size_t sp_image_size;
+
+private:
   spu_t priv_spu;
   vob_t priv_vob;
+
+  unsigned last_start_pts = 0;
+  unsigned last_end_pts = 0;
 };
 
 #endif // VOBSUB_HXX

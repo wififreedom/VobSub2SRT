@@ -176,91 +176,54 @@ process_sub(
   }
 
   // Read subtitles and convert
-  void *packet;
-  int timestamp; // pts100
-  int len;
-  unsigned last_start_pts = 0;
-  unsigned last_end_pts = 0;
   unsigned sub_counter = 1;
 
   if (verbosity) {
     std::cerr << "Reading subtitle start/end times and images from '" << subname << ".sub'" << std::endl;
   }
 
-  while ((len = vobsub_get_next_packet(vobsub.vob(), &packet, &timestamp)) > 0) {
-    if (timestamp >= 0) {
-      spudec_assemble(vobsub.spu(), reinterpret_cast<unsigned char*>(packet), len, timestamp);
-      if (!spudec_heartbeat(vobsub.spu(), timestamp)) {
-	// spudec_assemble is still assembling packet from its fragments
-	continue;
-      }
-
-      unsigned char const *sp_image;
-      unsigned sp_width, sp_height, sp_stride;
-      size_t sp_image_size; // should be at least height * stride
-      unsigned start_pts = 0, end_pts = 0;
-
-      // Get the image data to know dimensions and timing info
-      spudec_get_data(vobsub.spu(), &sp_image, &sp_image_size, &sp_width, &sp_height, &sp_stride, &start_pts, &end_pts);
-
-      if (sp_width == 0 || sp_height == 0) {
-	std::cerr << sub_counter << ": start " << start_pts <<
-	  ", image width: " << sp_width << ", height: " << sp_height <<
-	  ": skipping" << std::endl;
-	continue;
-      }
-
-      if (sp_width < min_width || sp_height < min_height) {
-	std::cerr << "WARNING: " << sub_counter << ": image too small" <<
-	  ", size: " << sp_image_size << " bytes" <<
-	  ", " << sp_width << "x" << sp_height << " pixels" <<
-	  ", require at least " <<
-	  ", " << min_width << "x" << min_height << " pixels" <<
-	  ": skipping" << std::endl;
-        continue;
-      }
-
-      if (verbosity and static_cast<unsigned>(timestamp) != start_pts) {
-	std::cerr << sub_counter << ": time stamp from .idx (" << timestamp
-		  << ") doesn't match time stamp from .sub ("
-		  << start_pts << ")\n";
-      }
-
-      // deal with subtitles that have the same start time
-      if (start_pts == last_start_pts && last_end_pts != UINT_MAX) {
-	start_pts = last_end_pts;
-      }
-      last_start_pts = start_pts;
-      last_end_pts = end_pts;
-
-      // dump subtitle image to file for option --dump-images
-      if (dump_ext.size()) {
-	std::stringstream ss;
-	ss << subname << "-" << std::format("{:04}", sub_counter) << "." << dump_ext;
-	cv::Mat sp_img(
-	    static_cast<int>(sp_height),
-	    static_cast<int>(sp_width),
-	    CV_8UC1,
-	    (void *) sp_image,
-	    static_cast<std::size_t>(sp_stride));
-	cv::imwrite(ss.str(), sp_img);
-      }
-
-      const bool have_text = subtitles.append(
-	  sub_counter,
-	  start_pts,
-	  end_pts,
-	  sp_image,
-	  sp_width,
-	  sp_height,
-	  sp_stride);
-
-      if (have_text) {
-	sub_counter++;
-      }
+  while (vobsub.next()) {
+    if (vobsub.sp_width == 0 || vobsub.sp_height == 0) {
+      std::cerr << sub_counter << ": start " << vobsub.start_pts <<
+	", image width: " << vobsub.sp_width << ", height: " << vobsub.sp_height <<
+	": skipping" << std::endl;
+      continue;
     }
-    else {
-      std::cerr << "timestamp < 0" << std::endl;
+
+    if (vobsub.sp_width < min_width || vobsub.sp_height < min_height) {
+      std::cerr << "WARNING: " << sub_counter << ": image too small" <<
+	", size: " << vobsub.sp_image_size << " bytes" <<
+	", " << vobsub.sp_width << "x" << vobsub.sp_height << " pixels" <<
+	", require at least " <<
+	", " << min_width << "x" << min_height << " pixels" <<
+	": skipping" << std::endl;
+      continue;
+    }
+
+    // dump subtitle image to file for option --dump-images
+    if (dump_ext.size()) {
+      std::stringstream ss;
+      ss << subname << "-" << std::format("{:04}", sub_counter) << "." << dump_ext;
+      cv::Mat sp_img(
+	  static_cast<int>(vobsub.sp_height),
+	  static_cast<int>(vobsub.sp_width),
+	  CV_8UC1,
+	  (void *) vobsub.sp_image,
+	  static_cast<std::size_t>(vobsub.sp_stride));
+      cv::imwrite(ss.str(), sp_img);
+    }
+
+    const bool have_text = subtitles.append(
+	sub_counter,
+	vobsub.start_pts,
+	vobsub.end_pts,
+	vobsub.sp_image,
+	vobsub.sp_width,
+	vobsub.sp_height,
+	vobsub.sp_stride);
+
+    if (have_text) {
+      sub_counter++;
     }
   }
 

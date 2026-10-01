@@ -19,10 +19,17 @@
 
 #include "VobSub.h++"
 
+#include "generic_exception.h++"
+
+#include <iostream>
+#include <climits>
+
 VobSub::VobSub()
     : priv_spu(NULL),
       priv_vob(NULL) {
   mp_msg_init();
+  reset_public();
+  reset_private();
 }
 
 VobSub::~VobSub() {
@@ -35,6 +42,10 @@ VobSub::open(
     const std::string& sub_file_name,
     const std::string& ifo_file_name,
     const int y_threshold) {
+
+  if (priv_vob || priv_spu) {
+    throw generic_exception("VobSub::next: already open");
+  }
 
   if (sub_file_name.empty()) {
     throw generic_exception("VobSub::open: empty file name");
@@ -57,6 +68,72 @@ VobSub::open(
        	sub_file_name + ".idx and " +
        	sub_file_name + ".sub'");
   }
+
+  reset_public();
+  reset_private();
+}
+
+bool
+VobSub::next() {
+
+  if (!priv_vob || !priv_spu) {
+    throw generic_exception("VobSub::next: not open");
+  }
+
+  reset_public();
+
+  while (true) {
+    unsigned char *packet = NULL;
+    int packet_pts100 = 0;
+
+    // Get next mpeg packet
+    int packet_size = vobsub_get_next_packet(priv_vob, (void **) &packet, &packet_pts100);
+    if (packet_size == -1) {
+      // end of stream
+      return false;
+    }
+    if (packet_pts100 == ((int) UINT_MAX)) {
+      // bad packet, skip
+      continue;
+    }
+
+    // The mpeg packet contains a vobsub frame, and spudec_assemble assembles
+    // frames into a vobsub packet, decodes the vobsub packet once complete,
+    // and places it in a queue.
+    spudec_assemble(priv_spu, packet, packet_size, packet_pts100);
+
+    // Function spudec_heartbeat dequeues all vobsub packets from the queue
+    // that have a pts100 value <= the provided pt100 value, in this case
+    // packet_pts100.
+    // It has been modified for vobsub2srt to return the number of packets it
+    // dequeued.
+    int num_dequeued = spudec_heartbeat(priv_spu, packet_pts100);
+    if (num_dequeued == 0) {
+      // no vobsub packet fully assembled yet
+      continue;
+    }
+
+    if (num_dequeued > 1) {
+      // Somehow a vobsub packet was skipped, this is unexpected.
+      std::cerr << "VobSub Packet skipped???" << std::endl;
+    }
+
+    // vobsub packet fully assembled
+    // get the data of the assembled vobsub packet
+    spudec_get_data(priv_spu, &sp_image, &sp_image_size, &sp_width, &sp_height,
+	&sp_stride, &start_pts, &end_pts);
+
+    // try to deal with subtitles that have the same start time
+    if (start_pts == last_start_pts && last_end_pts != UINT_MAX) {
+      start_pts = last_end_pts;
+    }
+    last_start_pts = start_pts;
+    last_end_pts = end_pts;
+
+    break;
+  }
+
+  return true;
 }
 
 void
@@ -69,15 +146,8 @@ VobSub::close() {
     spudec_free(priv_spu);
     priv_spu = NULL;
   }
-}
-
-spu_t
-VobSub::spu() {
-  if (!priv_spu) {
-    throw generic_exception("VobSub::spu: not open");
-  }
-
-  return priv_spu;
+  reset_public();
+  reset_private();
 }
 
 vob_t
@@ -87,5 +157,22 @@ VobSub::vob() {
   }
 
   return priv_vob;
+}
+
+void
+VobSub::reset_public() {
+  start_pts = 0;
+  end_pts = 0;
+  sp_image = NULL;
+  sp_width = 0;
+  sp_height = 0;
+  sp_stride = 0;
+  sp_image_size = 0;
+}
+
+void
+VobSub::reset_private() {
+  last_start_pts = 0;
+  last_end_pts = 0;
 }
 
