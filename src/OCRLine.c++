@@ -58,8 +58,8 @@ OCRLine::OCRLine(
 std::size_t
 OCRLine::num_ocr_symbols() const {
   std::size_t num = 0;
-  for (std::size_t i = 0; i < word_vec.size(); ++i) {
-    num += word_vec[i].num_ocr_symbols();
+  for (const auto & word : word_vec) {
+    num += word.num_ocr_symbols();
   }
   return num;
 }
@@ -67,11 +67,12 @@ OCRLine::num_ocr_symbols() const {
 std::ostream&
 OCRLine::write(
     std::ostream& os) const {
-  for (std::size_t word_i = 0; word_i < word_vec.size(); word_i++) {
-    if (word_i > 0) {
+  for (bool at_begin = true; const auto& word : word_vec) {
+    if (!at_begin) {
       os << ' ';
     }
-    word_vec[word_i].write(os);
+    word.write(os);
+    at_begin = false;
   }
   os << std::endl;
   return os;
@@ -134,6 +135,7 @@ OCRLine::read(
     throw generic_exception(ss.str());
   }
 
+  // istream_iterator splits on whitespace sequence
   std::stringstream line_ss(line);
   std::istream_iterator<std::string> begin(line_ss);
   std::istream_iterator<std::string> end;
@@ -484,8 +486,8 @@ OCRLine::bboxes_remove() {
 void
 OCRLine::assign_confidence(
     const TextStats& stats) {
-  for (std::size_t word_i = 0; word_i < word_vec.size(); word_i++) {
-    word_vec[word_i].assign_confidence(img, stats);
+  for (auto& word: word_vec) {
+    word.assign_confidence(img, stats);
   }
 }
 
@@ -518,6 +520,11 @@ OCRLine::propagate_word_confidence() {
 	  made_change);
     }
   } while (have_uncertain && made_change);
+
+  if (debug || subtitle_number == debug_subtitle_number) {
+    std::cerr << "subtitle " << subtitle_number << ", line " << line_number << ": " << std::endl;
+    dump(std::cerr);
+  }
 }
 
 void
@@ -536,17 +543,17 @@ OCRLine::write_srt(std::ostream& os) const {
 std::size_t
 OCRLine::num_chars_for_duration() const {
   std::size_t num = 0;
-  for (std::size_t i = 0; i < word_vec.size(); i++) {
+  for (const auto& word : word_vec) {
     // +1 for space or newline
-    num += word_vec[i].num_ocr_symbols() + 1;
+    num += word.num_ocr_symbols() + 1;
   }
   return num;
 }
 
 void
 OCRLine::dump(std::ostream& os) const {
-  for (const auto& it : word_vec) {
-    it.dump(os);
+  for (const auto& word : word_vec) {
+    word.dump(os);
   }
 }
 
@@ -655,7 +662,7 @@ OCRLine::symbol_bboxes_remove_invalid(
 
   const int dq_y_limit = priv_bbox.y + (priv_bbox.height / 2);
 
-  for (auto& it : src) {
+  for (const auto& it : src) {
     const bool maybe_double_quote = ((it.y + it.height) < dq_y_limit);
 
     if (!bbox_is_invalid(it, !maybe_double_quote)) {
@@ -960,7 +967,7 @@ OCRLine::word_bboxes_remove_invalid(
 
   dst.clear();
 
-  for (auto& it : src) {
+  for (const auto& it : src) {
     if (!bbox_is_invalid(it, false)) {
       dst.emplace_back(it);
     }
@@ -987,7 +994,7 @@ OCRLine::word_bboxes_remove_too_much_spacing(
 
   const int max_spacing = std::max(min_word_spacing_opt.value(), (int)(2 * avg_symbol_spacing_opt.value()));
 
-  for (auto& it : src) {
+  for (const auto& it : src) {
     const int max_seq_white_columns = bbox_max_seq_white_columns(img, it);
     if (max_seq_white_columns <= max_spacing) {
       dst.emplace_back(it);
@@ -1144,9 +1151,7 @@ OCRLine::bboxes_get_word_candidates(
 
   dst.clear();
 
-  for (std::size_t src_i = 0; src_i < src.size(); src_i++) {
-    const cv::Rect r = src[src_i];
-
+  for (const auto& r : src) {
     if ((r.x >= word.x) && ((r.x + r.width) <= (word.x + word.width))) {
       dst.emplace_back(r);
     }
@@ -1193,8 +1198,8 @@ OCRLine::symbol_bboxes_draw(
   cv::Mat result_img(img_bbox.height, img_bbox.width, img.type());
   cv::Mat(img, img_bbox).copyTo(result_img);
 
-  for (const auto& it : word_vec) {
-    it.symbol_bboxes_draw(result_img, img_bbox, grayscale_color);
+  for (const auto& word : word_vec) {
+    word.symbol_bboxes_draw(result_img, img_bbox, grayscale_color);
   }
 
   return result_img;

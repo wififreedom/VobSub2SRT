@@ -978,8 +978,7 @@ OCRWord::dump(std::ostream& os) const {
   os << "    " << part_vec.size() << " parts:" << std::endl;
   for (const auto& part : part_vec) {
     os << "      symbols " << part.begin_index << "-" << (part.end_index - 1) << ": ";
-    part_write(os, part);
-    os << ": ";
+    part_write(os, part) << ": ";
     if (part.is_punct_at_begin) {
       os << "punct at begin, ";
     }

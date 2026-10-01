@@ -65,7 +65,7 @@ public:
 
   void bboxes_remove();
 
-  std::size_t detect_italic(
+  void detect_italic(
       const TextStats& stats);
 
   void

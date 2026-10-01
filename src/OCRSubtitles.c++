@@ -66,11 +66,12 @@ std::ostream&
 dump_histogram(
     std::ostream& os,
     std::vector<int>& color_histogram) {
-  for (std::size_t i = 0; i < color_histogram.size(); i++) {
-    if (color_histogram[i]) {
-      os << "  " << std::format("{:4}", i) << ": " <<
-	std::format("{:5}", color_histogram[i]) << std::endl;
+  for (std::size_t color = 0; const auto& count : color_histogram) {
+    if (count) {
+      os << "  " << std::format("{:4}", color) << ": " <<
+	std::format("{:5}", count) << std::endl;
     }
+    color++;
   }
   return os;
 }

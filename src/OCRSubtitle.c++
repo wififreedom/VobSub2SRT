@@ -52,49 +52,35 @@ OCRSubtitle::bboxes_assign(
   const std::string& subname,
   const TextStats * const stats) {
 
-  for (std::size_t i = 0; i < line_vec.size(); i++) {
-
-    line_vec[i].bboxes_assign(
-      subname,
-      stats);
+  for (auto& line : line_vec) {
+    line.bboxes_assign(subname, stats);
   }
 }
 
 void
 OCRSubtitle::build_stats(
     TextStats& stats) const {
-  for (auto& it : line_vec) {
-    it.build_stats(stats);
+  for (auto& line : line_vec) {
+    line.build_stats(stats);
   }
 }
 
 void
 OCRSubtitle::bboxes_remove() {
-  for (auto& it : line_vec) {
-    it.bboxes_remove();
+  for (auto& line : line_vec) {
+    line.bboxes_remove();
   }
 }
 
-std::size_t
+void
 OCRSubtitle::detect_italic(
   const TextStats& stats) {
 
-  std::size_t line_fail_count = 0;
-
-  for (std::size_t tl_i = 0; tl_i < line_vec.size(); tl_i++) {
-    OCRLine& line = line_vec[tl_i];
-
+  for (auto& line : line_vec) {
     line.assign_confidence(stats);
 
     line.propagate_word_confidence();
-
-    if (debug || subtitle_number == debug_subtitle_number) {
-      std::cerr << "subtitle " << subtitle_number << ", line " << (tl_i + 1) << ": " << std::endl;
-      line.dump(std::cerr);
-    }
   }
-
-  return line_fail_count;
 }
 
 std::ostream&
@@ -152,8 +138,8 @@ OCRSubtitle::write_srt(
   write_pts(os, start_pts) << " --> ";
   write_pts(os, end_pts) << std::endl;
 
-  for (const auto& it : line_vec) {
-    it.write_srt(os);
+  for (const auto& line : line_vec) {
+    line.write_srt(os);
   }
   os << std::endl;
 }
@@ -161,8 +147,8 @@ OCRSubtitle::write_srt(
 std::size_t
 OCRSubtitle::num_chars_for_duration() const {
   std::size_t num = 0;
-  for (std::size_t i = 0; i < line_vec.size(); i++) {
-    num += line_vec[i].num_chars_for_duration();
+  for (const auto& line : line_vec) {
+    num += line.num_chars_for_duration();
   }
   return num - 1; // cut off extra newline
 }

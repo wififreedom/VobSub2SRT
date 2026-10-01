@@ -54,7 +54,7 @@ include(CheckCXXSourceRuns)
 
 set(CMAKE_C_STANDARD 17)
 set(CMAKE_C_FLAGS "-Wall -Wextra")
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "-pedantic -Wall -Wextra")
 
 set(CMAKE_CXX_FLAGS_RELEASE "-O2 -march=native -DNDEBUG")
