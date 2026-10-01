@@ -21,20 +21,41 @@
 
 #include "generic_exception.h++"
 
-#include <iostream>
+// MPlayer code
+#include "mp_msg.h"
+#include "vobsub.h"
+#include "spudec.h"
+
 #include <climits>
+#include <iostream>
+#include <sstream>
+
+int VobSub::count = 0;
 
 VobSub::VobSub()
-    : priv_spu(NULL),
-      priv_vob(NULL) {
+    : priv_vob(NULL),
+      priv_spu(NULL) {
+  if (count > 0) {
+    throw generic_exception("VobSub: only one instance at a time");
+  }
+
   mp_msg_init();
   reset_public();
   reset_private();
+
+  count++;
 }
 
 VobSub::~VobSub() {
   close();
   mp_msg_uninit();
+  count--;
+}
+
+void
+VobSub::verbose(
+    const int level) {
+  ::verbose = level;
 }
 
 void
@@ -42,10 +63,6 @@ VobSub::open(
     const std::string& sub_file_name,
     const std::string& ifo_file_name,
     const int y_threshold) {
-
-  if (priv_vob || priv_spu) {
-    throw generic_exception("VobSub::next: already open");
-  }
 
   if (sub_file_name.empty()) {
     throw generic_exception("VobSub::open: empty file name");
@@ -71,6 +88,53 @@ VobSub::open(
 
   reset_public();
   reset_private();
+}
+
+std::vector<std::string>
+VobSub::languages() const {
+  std::vector<std::string> result;
+
+  const std::size_t count = vobsub_get_indexes_count(priv_vob);
+  for (std::size_t i = 0; i < count; i++) {
+    const char* language = vobsub_get_id(priv_vob, i);
+    result.emplace_back(language ? language : "");
+  }
+
+  return result;
+}
+
+std::string
+VobSub::set_subtitle_index(
+    const unsigned index) {
+
+  const unsigned index_count = vobsub_get_indexes_count(priv_vob);
+
+  if (index < index_count) {
+    vobsub_id = index;
+  }
+  else {
+    std::stringstream ss;
+    ss << "subtitle index " << index << " out of range, maximum value: " <<
+      (index_count - 1);
+    throw generic_exception(ss.str());
+  }
+
+  stream_has_been_set = true;
+
+  const char* const lang1 = vobsub_get_id(priv_vob, index);
+  return lang1 ? lang1 : "";
+}
+
+bool
+VobSub::set_subtitle_index_by_language(
+    const std::string& language) {
+
+  if (vobsub_set_from_lang(priv_vob, language.c_str()) < 0) {
+    return false;
+  }
+
+  stream_has_been_set = true;
+  return true;
 }
 
 bool
@@ -148,15 +212,9 @@ VobSub::close() {
   }
   reset_public();
   reset_private();
-}
 
-vob_t
-VobSub::vob() {
-  if (!priv_vob) {
-    throw generic_exception("VobSub::vob: not open");
-  }
-
-  return priv_vob;
+  // restore default vobsub id (mplayer uses global variable)
+  vobsub_id = 0;
 }
 
 void
@@ -172,6 +230,7 @@ VobSub::reset_public() {
 
 void
 VobSub::reset_private() {
+  stream_has_been_set = false;
   last_start_pts = 0;
   last_end_pts = 0;
 }

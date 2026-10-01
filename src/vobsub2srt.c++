@@ -20,26 +20,28 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Tesseract OCR
-#include <tesseract/baseapi.h>
-
-// Builtins/standard libs
-#include <fstream>
-#include <format>
-#include <regex>
-
 // Language and option handling.
 #include "langcodes.h++"
 #include "cmd_options.h++"
 #include "version.h++"
 
 // Italics detection with help of opencv
+#include "generic_exception.h++"
 #include "debug.h++"
 #include "OCRSubtitles.h++"
 #include "Replacements.h++"
 #include "VobSub.h++"
 
+// Tesseract OCR
+#include <tesseract/baseapi.h>
+
+// OpenCV
 #include <opencv2/imgcodecs.hpp>
+
+// Builtins/standard libs
+#include <fstream>
+#include <format>
+#include <regex>
 
 void
 process_sub(
@@ -92,9 +94,8 @@ process_sub(
   // list languages and return
   if (list_languages) {
     std::cout << "'" << subname << "': languages:\n";
-    for (size_t i = 0; i < vobsub_get_indexes_count(vobsub.vob()); ++i) {
-      const char* const id = vobsub_get_id(vobsub.vob(), i);
-      std::cout << i << ": " << (id ? id : "(no id)") << '\n';
+    for (int i = 0; const auto& it : vobsub.languages()) {
+      std::cout << i++ << ": " << (it.size() ? it.c_str() : "(no id)") << std::endl;
     }
     return;
   }
@@ -103,29 +104,25 @@ process_sub(
   // or inferred from selected subtitle track.
   const char* tess_lang = tess_lang_user.empty() ? "eng" : tess_lang_user.c_str();
   if (!sub_lang.empty()) {
-    if(vobsub_set_from_lang(vobsub.vob(), sub_lang.c_str()) < 0) {
-      std::cerr << "No matching language for '" << sub_lang << "' found! (Trying to use default)\n";
-    }
-    else if (tess_lang_user.empty()) {
-      const char* const lang3 = iso639_1_to_639_3(sub_lang.c_str());
-      if (lang3) {
-	tess_lang = lang3;
+    if (vobsub.set_subtitle_index_by_language(sub_lang)) {
+      if (tess_lang_user.empty()) {
+	const char* const lang3 = iso639_1_to_639_3(sub_lang.c_str());
+	if (lang3) {
+	  tess_lang = lang3;
+	}
       }
     }
-  } else {
-    if (sub_index >= 0) {
-      if (static_cast<unsigned>(sub_index) >= vobsub_get_indexes_count(vobsub.vob())) {
-	std::cerr << "Index argument out of range: " << sub_index << " " <<
-	  "(" << vobsub_get_indexes_count(vobsub.vob()) << ")\n";
-	return;
-      }
-      vobsub_id = sub_index;
+    else {
+      std::string const lang1 = vobsub.set_subtitle_index(0);
+      std::cerr << "No subtitle index with language matching " <<
+	"'" << sub_lang << "' found, using index 0 (" << lang1 << ")." <<
+	std::endl;
     }
-    
-    if (vobsub_id >= 0) {
-      const char* const lang1 = vobsub_get_id(vobsub.vob(), vobsub_id);
-      if (lang1 && tess_lang_user.empty()) {
-	const char* const lang3 = iso639_1_to_639_3(lang1);
+  } else if (sub_index >= 0) {
+    std::string const lang1 = vobsub.set_subtitle_index(sub_index);
+    if (!lang1.empty()) {
+      if (tess_lang_user.empty()) {
+	const char* const lang3 = iso639_1_to_639_3(lang1.c_str());
 	if (lang3) {
 	  tess_lang = lang3;
 	}
@@ -289,7 +286,7 @@ main2(int argc, char **argv) {
       add_option("verbose", verbosity, "Verbosity, a value of 1 or 2. Also applies to decoder.").
       add_option("ifo", ifo_file, "Name of the IFO file. Default: tries to open <subname>.ifo(case insensitive).\n\t\t\t\tIFO file is optional but may fix empty palette issues!").
       add_option("index", sub_index, "Subtitle index to select. Incompatible with option --lang.", 'i').
-      add_option("lang", sub_lang, "Subtitle language to select. Incomaptible with option --index.", 'l').
+      add_option("lang", sub_lang, "Subtitle language to select (e.g. en, de, fr, de, es). Incompatible with option --index.", 'l').
       add_option("langlist", list_languages, "List subtitle languages present in the .idx/.sub files and exit").
       add_option("tesseract-lang", tess_lang_user, "Desired Tesseract language (e.g. eng, deu, fra, esp, eng+fra)\n\t\t\t\t(Default: autodetect)").
       add_option("tesseract-data", tess_data_dir, "Path to Tesseract data (e.g. you have tessdata_best and wish to\n\t\t\t\tuse it. Default: autodetect)").
@@ -326,7 +323,7 @@ main2(int argc, char **argv) {
   }
 
   if (verbosity > 0) {
-    verbose = verbosity; // mplayer verbose level
+    VobSub::verbose(verbosity);
   }
   
   // Read the replacements file first, to immediately report syntax errors in

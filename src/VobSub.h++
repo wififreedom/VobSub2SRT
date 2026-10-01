@@ -18,15 +18,7 @@
  */
 
 #include <string>
-
-#include "generic_exception.h++"
-
-#include "mp_msg.h"
-#include "vobsub.h"
-#include "spudec.h"
-
-typedef void* vob_t;
-typedef void* spu_t;
+#include <vector>
 
 #ifndef VOBSUB_HXX
 #define VOBSUB_HXX
@@ -38,18 +30,31 @@ public:
 
   ~VobSub();
 
+  static void
+  verbose(
+      const int level);
+
   void open(
       const std::string& sub_file_name,
       const std::string& ifo_file_name,
       const int y_threshold);
+
+  std::vector<std::string>
+  languages() const;
+
+  std::string
+  set_subtitle_index(
+      const unsigned index);
+
+  bool
+  set_subtitle_index_by_language(
+      const std::string& language);
 
   // returns false on end of stream
   // else, fills in the public data members below.
   bool next();
 
   void close();
-
-  vob_t vob();
 
 private:
   void
@@ -87,8 +92,13 @@ public:
   size_t sp_image_size;
 
 private:
-  spu_t priv_spu;
-  vob_t priv_vob;
+  // therer can only be one VobSub instance at a time.
+  static int count;
+
+  void *priv_vob;
+  void *priv_spu;
+
+  bool stream_has_been_set = false;
 
   unsigned last_start_pts = 0;
   unsigned last_end_pts = 0;
