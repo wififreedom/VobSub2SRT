@@ -154,6 +154,26 @@ bbox_shrink_vert(
     const cv::Mat& img,
     cv::Rect& bbox);
 
+void
+bbox_shrink_hori_left(
+    const cv::Mat& img,
+    cv::Rect& bbox);
+
+void
+bbox_shrink_hori_right(
+    const cv::Mat& img,
+    cv::Rect& bbox);
+
+void
+bbox_shrink_hori(
+    const cv::Mat& img,
+    cv::Rect& bbox);
+
+void
+bbox_shrink(
+    const cv::Mat& img,
+    cv::Rect& bbox);
+
 // image must be white text on black background
 // text_line_bbox_vec is not cleared, just appended to
 void

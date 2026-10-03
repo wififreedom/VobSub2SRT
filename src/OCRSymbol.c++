@@ -28,7 +28,7 @@
 OCRSymbol::OCRSymbol(
     const char* const utf8_symbol)
     : priv_utf8_symbol(),
-      priv_bboxes(),
+      itd_bbox_vec(),
       priv_italic_confidence(DEFAULT_CONFIDENCE) {
 
   if (utf8_symbol == NULL) {
@@ -42,7 +42,7 @@ OCRSymbol::OCRSymbol(
 OCRSymbol::OCRSymbol(
     const std::string& utf8_symbol)
     : priv_utf8_symbol(utf8_symbol),
-      priv_bboxes(),
+      itd_bbox_vec(),
       priv_italic_confidence(DEFAULT_CONFIDENCE) {
 }
 
@@ -57,8 +57,8 @@ void
 OCRSymbol::build_stats(
     const cv::Mat& img,
     TextStats& stats) const {
-  if (priv_bboxes.size() == 1) {
-    const cv::Rect& bbox = priv_bboxes[0];
+  if (itd_bbox_vec.size() == 1) {
+    const cv::Rect& bbox = itd_bbox_vec[0];
     stats.symbol_add(
 	priv_utf8_symbol,
 	bbox,
@@ -73,31 +73,31 @@ void
 OCRSymbol::bbox_assign(
     const cv::Rect& bbox,
     bool test_only) {
-  if (priv_bboxes.size()) {
+  if (itd_bbox_vec.size()) {
     throw generic_exception("OCRSymbol::bbox_assign: bbox already assigned");
   }
   if (test_only) {
     return;
   }
-  priv_bboxes.emplace_back(bbox);
+  itd_bbox_vec.emplace_back(bbox);
 }
 
 void
 OCRSymbol::bboxes_assign(
     const std::vector<cv::Rect>& bboxes,
     bool test_only) {
-  if (priv_bboxes.size()) {
+  if (itd_bbox_vec.size()) {
     throw generic_exception("OCRSymbol::bboxes_assign: bbox already assigned");
   }
   if (test_only) {
     return;
   }
-  priv_bboxes = bboxes;
+  itd_bbox_vec = bboxes;
 }
 
 void
 OCRSymbol::bboxes_remove() {
-  priv_bboxes.clear();
+  itd_bbox_vec.clear();
 }
 
 void
@@ -116,8 +116,8 @@ OCRSymbol::assign_confidence(
     return;
   }
 
-  if (priv_bboxes.size() == 1) {
-    cv::Rect& bbox = priv_bboxes[0];
+  if (itd_bbox_vec.size() == 1) {
+    cv::Rect& bbox = itd_bbox_vec[0];
 
     // TODO see if we can base the constants -1.8 on something (bbox width?)
 
@@ -182,10 +182,10 @@ OCRSymbol::assign_confidence(
       priv_italic_confidence = -bbox.height;
     }
   }
-  else if (priv_bboxes.size() == 0) {
+  else if (itd_bbox_vec.size() == 0) {
     priv_italic_confidence = 11;
   }
-  else if (priv_bboxes.size() > 1) {
+  else if (itd_bbox_vec.size() > 1) {
     priv_italic_confidence = 5;
   }
 }
@@ -194,7 +194,7 @@ void
 OCRSymbol::dump(
     std::ostream& os) const {
   os << "      utf8_symbol: " << priv_utf8_symbol;
-  for (std::size_t i = 1; const auto& bbox : priv_bboxes) {
+  for (std::size_t i = 1; const auto& bbox : itd_bbox_vec) {
     os << ", bbox " << i << ": (" <<
       bbox.x << "," <<
       bbox.y << ")-(" <<
@@ -207,12 +207,12 @@ OCRSymbol::dump(
 }
 
 void
-OCRSymbol::bboxes_draw(
+OCRSymbol::itd_bboxes_draw(
   const cv::Mat& img,
   const cv::Rect& line_bbox,
   unsigned char grayscale_color) const {
 
-  for (const auto& bbox : priv_bboxes) {
+  for (const auto& bbox : itd_bbox_vec) {
     cv::rectangle(
 	img,
 	cv::Rect(

@@ -115,7 +115,7 @@ public:
   //   them.
   const std::vector<cv::Rect> &
   bboxes() const {
-    return priv_bboxes;
+    return itd_bbox_vec;
   }
 
   // Check if the first char of the symbol is in the set of specified
@@ -229,7 +229,7 @@ public:
   // line_bbox. If so, the coordinates of the drawn bboxes will be adjusted by
   // -line_bbox.x and -line_bbox.y pixels.
   void
-  bboxes_draw(
+  itd_bboxes_draw(
     const cv::Mat& img,
     const cv::Rect& line_bbox,
     unsigned char grayscale_color) const;
@@ -245,7 +245,7 @@ private:
   // - ocr_bbox of the OCRWord this OCRSymbol is part of
   // It's not always possible to determine which bounding box is the correct
   // one for a symbol. In that case, all candidates are in the vector.
-  std::vector<cv::Rect> priv_bboxes;
+  std::vector<cv::Rect> itd_bbox_vec;
 
   // See CONFIDENT_* and DEFAULT_CONFIDENCE macros for the interpretation of
   // the italic confidence value.

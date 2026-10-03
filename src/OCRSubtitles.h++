@@ -45,10 +45,15 @@ private:
     uint32_t start_pts;
     uint32_t end_pts;
 
-    // original image after conversion to white text on black background
-    cv::Mat bw_img;
+    // original image after conversion to white text on black background for
+    // ocr
+    cv::Mat ocr_img;
+    std::vector<cv::Rect> ocr_line_bbox_vec;
 
-    std::vector<cv::Rect> bw_line_bbox_vec;
+    // original image after conversion to white text on black background for
+    // italic detection
+    cv::Mat itd_img;
+    std::vector<cv::Rect> itd_line_bbox_vec;
   };
 
 public:
@@ -106,15 +111,19 @@ private:
   batch_prepare(
       const std::size_t batch_begin_i,
       const std::size_t batch_end_i,
-      std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec) const;
+      std::vector<std::vector<cv::Rect>>& ocr_line_bbox_vec_vec,
+      cv::Mat& itd_batch_img,
+      std::vector<std::vector<cv::Rect>>& itd_line_bbox_vec_vec) const;
 
   void
   batch_ocr(
       tesseract::TessBaseAPI& tess_base_api,
-      const cv::Mat& combined_img,
-      const std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec,
+      const cv::Mat& batch_ocr_img,
+      const std::vector<std::vector<cv::Rect>>& ocr_line_bbox_vec_vec,
       const std::size_t batch_begin_subtitle_i,
       const std::size_t batch_begin_line_i,
+      const cv::Mat& itd_batch_img,
+      const std::vector<std::vector<cv::Rect>>& itd_line_bbox_vec_vec,
       std::vector<std::vector<OCRLine>>& subtitle_line_vec) const;
 
   void
@@ -129,15 +138,9 @@ private:
       const std::size_t line_i,
       const std::size_t fill_subtitle_i,
       const std::size_t fill_line_i,
-      std::vector<std::vector<cv::Rect>>& combined_line_bbox_vec_vec);
-
-  void
-  recover_wipe(
-      cv::Mat& combined_img,
-      const std::size_t subtitle_i,
-      const std::size_t line_i,
-      const std::size_t fill_subtitle_i,
-      const std::size_t fill_line_i);
+      std::vector<std::vector<cv::Rect>>& ocr_line_bbox_vec_vec,
+      cv::Mat& itd_batch_img,
+      std::vector<std::vector<cv::Rect>>& itd_line_bbox_vec_vec);
 
   OCRLine
   recover_line(

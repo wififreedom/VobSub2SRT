@@ -125,7 +125,7 @@ public:
       std::ostream& os) const;
 
   void
-  symbol_bboxes_draw(
+  itd_symbol_bboxes_draw(
     const cv::Mat& img,
     const cv::Rect& line_bbox,
     unsigned char grayscale_color) const;

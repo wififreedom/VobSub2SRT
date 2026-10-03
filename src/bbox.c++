@@ -355,8 +355,9 @@ bbox_shrink_vert_top(
 
   if (bbox.height > 0) {
     for (int i = 0; i < bbox.height; i++) {
+      const int row = bbox.y + i;
       for (int j = 0; j < bbox.width; j++) {
-	if (img.at<uchar>(bbox.y + i, bbox.x + j) == ((uchar) 0)) {
+	if (img.at<uchar>(row, bbox.x + j) == ((uchar) 0)) {
 	  bbox.y += i;
 	  bbox.height -= i;
 	  return;
@@ -393,6 +394,61 @@ bbox_shrink_vert(
     cv::Rect& bbox) {
   bbox_shrink_vert_bottom(img, bbox);
   bbox_shrink_vert_top(img, bbox);
+}
+
+void
+bbox_shrink_hori_left(
+    const cv::Mat& img,
+    cv::Rect& bbox)
+{
+  if (bbox.width > 0) {
+    for (int i = 0; i < bbox.width; i++) {
+      const int col = bbox.x + i;
+      for (int j = 0; j < bbox.height; j++) {
+	if (img.at<uchar>(bbox.y + j, col) == ((uchar) 0)) {
+	  bbox.x += i;
+	  bbox.width -= i;
+	  return;
+	}
+      }
+    }
+    bbox.x += bbox.width;
+    bbox.width = 0;
+  }
+}
+
+void
+bbox_shrink_hori_right(
+    const cv::Mat& img,
+    cv::Rect& bbox) {
+  if (bbox.width > 0) {
+    for (int i = 0; i < bbox.width; i++) {
+      const int col = bbox.x + bbox.width - 1 - i;
+      for (int j = 0; j < bbox.height; j++) {
+	if (img.at<uchar>(bbox.y + j, col) == ((uchar) 0)) {
+	  bbox.width -= i;
+	  return;
+	}
+      }
+    }
+  }
+  bbox.width = 0;
+}
+
+void
+bbox_shrink_hori(
+    const cv::Mat& img,
+    cv::Rect& bbox) {
+  bbox_shrink_hori_left(img, bbox);
+  bbox_shrink_hori_right(img, bbox);
+}
+
+void
+bbox_shrink(
+    const cv::Mat& img,
+    cv::Rect& bbox) {
+  bbox_shrink_vert(img, bbox);
+  bbox_shrink_hori(img, bbox);
 }
 
 void

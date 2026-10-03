@@ -32,27 +32,33 @@
 OCRLine::OCRLine(
     const std::size_t subtitle_number,
     const std::size_t line_number,
-    const cv::Mat& img_arg,
+    const cv::Mat& ocr_img,
+    const cv::Rect& ocr_bbox,
+    std::vector<cv::Rect>& ocr_word_bbox_vec_arg,
+    std::vector<cv::Rect>& ocr_symbol_bbox_vec_arg,
     std::vector<OCRWord>& word_vec_arg,
-    const cv::Rect& bbox,
-    std::vector<cv::Rect>& word_ocr_bbox_vec_arg,
-    std::vector<cv::Rect>& symbol_ocr_bbox_vec_arg)
+    const cv::Mat& itd_img,
+    const cv::Rect& itd_bbox)
     : subtitle_number(subtitle_number),
       line_number(line_number),
-      img(img_arg),
+      ocr_img(ocr_img),
+      ocr_bbox(ocr_bbox),
+      ocr_word_bbox_vec(),
+      ocr_symbol_bbox_vec(),
       word_vec(),
-      priv_bbox(bbox),
-      word_ocr_bbox_vec(),
-      symbol_ocr_bbox_vec() {
+      itd_img(itd_img),
+      itd_bbox(itd_bbox),
+      nwv(),
+      nsv() {
+  ocr_word_bbox_vec.swap(ocr_word_bbox_vec_arg);
+  // Tesseract does seem to sort bboxes, but not by x coordinate and then
+  // width (maybe by their center?)
+  bboxes_sort(ocr_word_bbox_vec);
+  ocr_symbol_bbox_vec.swap(ocr_symbol_bbox_vec_arg);
+  // Tesseract does seem to sort bboxes, but not by x coordinate and then
+  // width (maybe by their center?)
+  bboxes_sort(ocr_symbol_bbox_vec);
   word_vec.swap(word_vec_arg);
-  word_ocr_bbox_vec.swap(word_ocr_bbox_vec_arg);
-  // Tesseract does seem to sort bboxes, but not by x coordinate and then
-  // width (maybe by their center?)
-  bboxes_sort(word_ocr_bbox_vec);
-  symbol_ocr_bbox_vec.swap(symbol_ocr_bbox_vec_arg);
-  // Tesseract does seem to sort bboxes, but not by x coordinate and then
-  // width (maybe by their center?)
-  bboxes_sort(symbol_ocr_bbox_vec);
 }
 
 std::size_t
@@ -174,7 +180,7 @@ OCRLine::read(
 
   // compare to see if we need to invalidate word_ocr_bbox_vec.
   if (new_word_vec.size() != word_vec.size()) {
-    word_ocr_bbox_vec.clear();
+    ocr_word_bbox_vec.clear();
   }
 
   new_word_vec.swap(word_vec);
@@ -220,7 +226,7 @@ OCRLine::bboxes_assign(
   // Contour detection works best with white text on a black background:
   // then the contours are on the inside of the symbols, resulting in
   // accurate bounding boxes.
-  bboxes_invert_and_detect(img, bbox(), symbol_contour_bbox_vec);
+  bboxes_invert_and_detect(itd_img, itd_bbox, symbol_contour_bbox_vec);
   bboxes_sort_and_combine(symbol_contour_bbox_vec);
 
   // It's important to improve the quality of the symbol bboxes both for
@@ -238,13 +244,13 @@ OCRLine::bboxes_assign(
   //     infrequently).
   symbol_bboxes_improve(
     stats ? std::string() : subname,
-    symbol_ocr_bbox_vec,
+    ocr_symbol_bbox_vec,
     symbol_contour_bbox_vec,
     nsv);
 
   word_bboxes_improve(
     stats ? std::string() : subname,
-    word_ocr_bbox_vec,
+    ocr_word_bbox_vec,
     nsv,
     nwv,
     stats);
@@ -286,7 +292,7 @@ OCRLine::bboxes_assign(
 	if (debug_ext.size()) {
 	  std::stringstream ss;
 	  ss << subname << "-" << subtitle_number << "-" << line_number << "-word-supplem-bboxes." << debug_ext;
-	  cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), tmp));
+	  cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), tmp));
 	}
 	cerr_log() << ": bboxes_assign: word supplem bboxes: ";
 	bboxes_stream(std::cerr, tmp) << std::endl;
@@ -315,12 +321,13 @@ OCRLine::bboxes_assign(
 	    // cw that covers two symbols.
 
 	    // test if we can repair this word without merge of word bboxes
-	    if (!cw.bboxes_assign(img, ccands, stats, true)) {
+	    if (!cw.bboxes_assign(itd_img, ccands, stats, true)) {
 	      possibles.emplace_back(word_i);
 	    }
 	    // clear any assigned bboxes after the experiment
 	    cw.bboxes_remove();
-	  } else {
+	  }
+	  else {
 	    // This is also a guess. There may be overlapping bboxes in cw.
 	    // do not consider a possibility.
 	  }
@@ -339,7 +346,7 @@ OCRLine::bboxes_assign(
 	    if (debug_ext.size()) {
 	      std::stringstream ss;
 	      ss << subname << "-" << subtitle_number << "-" << line_number << "-word-merged-bboxes." << debug_ext;
-	      cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), tmp));
+	      cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), tmp));
 	    }
 	    cerr_log() << ": bboxes_assign: word merged bboxes: ";
 	    bboxes_stream(std::cerr, tmp) << std::endl;
@@ -399,9 +406,6 @@ OCRLine::bboxes_assign(
   if (nwv.size() == word_vec.size()) {
     word_bbox_vec = &nwv;
   }
-  else if (word_ocr_bbox_vec.size() == word_vec.size()) {
-    word_bbox_vec = &word_ocr_bbox_vec;
-  }
   else {
     if (debug || subtitle_number == debug_subtitle_number) {
       cerr_log() << ": number of words does not match number of word bboxes" <<
@@ -427,18 +431,18 @@ OCRLine::bboxes_assign(
 	if (debug_ext.size()) {
 	  std::stringstream ss;
 	  ss << subname << "-" << subtitle_number << "-" << line_number << "-" << (word_i + 1) << "-word-cands." << debug_ext;
-	  cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), cands));
+	  cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), cands));
 	}
 	cerr_log() << ", word " << (word_i + 1) << ": " << word << ": improved symbol bboxes for word: ";
 	bboxes_stream(std::cerr, cands) << std::endl;
       }
 
-      if (word.bboxes_assign(img, cands, stats, false)) {
+      if (word.bboxes_assign(itd_img, cands, stats, false)) {
 	if (debug || subtitle_number == debug_subtitle_number) {
 	  if (debug_ext.size()) {
 	    std::stringstream ss;
 	    ss << subname << "-" << subtitle_number << "-" << line_number << "-" << (word_i + 1) << "-symbol-assigned-bboxes." << debug_ext;
-	    cv::imwrite(ss.str(), word_symbol_bboxes_draw(word_i, 128));
+	    cv::imwrite(ss.str(), itd_word_symbol_bboxes_draw(word_i, 128));
 	  }
 	  cerr_log() << ", word " << (word_i + 1) << ": " << word << ": assigned symbol bboxes for word: ";
 	  bboxes_stream(std::cerr, cands) << std::endl;
@@ -465,7 +469,7 @@ void
 OCRLine::build_stats(
     TextStats& stats) const {
   for (auto& it : word_vec) {
-    it.build_stats(img, stats);
+    it.build_stats(itd_img, stats);
   }
 
   for (std::size_t i = 1; i < nwv.size(); i++) {
@@ -487,7 +491,7 @@ void
 OCRLine::assign_confidence(
     const TextStats& stats) {
   for (auto& word: word_vec) {
-    word.assign_confidence(img, stats);
+    word.assign_confidence(itd_img, stats);
   }
 }
 
@@ -564,12 +568,12 @@ OCRLine::cerr_log() const {
 }
 
 cv::Rect
-OCRLine::bordered_bbox() const {
+OCRLine::bordered_itd_bbox() const {
   return cv::Rect(
-      priv_bbox.x - NUM_BORDER_PIXELS,
-      priv_bbox.y - NUM_BORDER_PIXELS,
-      priv_bbox.width + 2 * NUM_BORDER_PIXELS,
-      priv_bbox.height + 2 * NUM_BORDER_PIXELS);
+      itd_bbox.x - NUM_BORDER_PIXELS,
+      itd_bbox.y - NUM_BORDER_PIXELS,
+      itd_bbox.width + 2 * NUM_BORDER_PIXELS,
+      itd_bbox.height + 2 * NUM_BORDER_PIXELS);
 }
 
 // Note that a double quote has a column of whitespace in the middle.
@@ -577,8 +581,9 @@ OCRLine::bordered_bbox() const {
 // symbol that may have a white column, such as a double-quote.
 bool
 OCRLine::bbox_is_invalid(
+    const cv::Mat& img,
     const cv::Rect& bbox,
-    const bool check_all_columns) {
+    const bool check_all_columns) const {
 
   // bbox has width <= 0 or height <= 0: bad
   if (bbox.width <= 0 || bbox.height <= 0) {
@@ -655,19 +660,34 @@ OCRLine::bbox_is_invalid(
 
 void
 OCRLine::symbol_bboxes_remove_invalid(
-    const std::vector<cv::Rect>& src,
-    std::vector<cv::Rect>& dst) {
+    const cv::Mat& img,
+    const cv::Rect& line_bbox,
+    const std::vector<cv::Rect>& src /* symbol bboxes */,
+    std::vector<cv::Rect>& dst /* symbol bboxes */) {
 
   dst.clear();
 
-  const int dq_y_limit = priv_bbox.y + (priv_bbox.height / 2);
+  const int dq_y_limit = line_bbox.y + (line_bbox.height / 2);
 
-  for (const auto& it : src) {
-    const bool maybe_double_quote = ((it.y + it.height) < dq_y_limit);
+  for (const auto& bbox : src) {
+    const bool maybe_double_quote = ((bbox.y + bbox.height) < dq_y_limit);
 
-    if (!bbox_is_invalid(it, !maybe_double_quote)) {
-      dst.emplace_back(it);
+    if (!bbox_is_invalid(img, bbox, !maybe_double_quote)) {
+      dst.emplace_back(bbox);
     }
+  }
+}
+
+void
+OCRLine::symbol_bboxes_ocr_to_itd(
+    const std::vector<cv::Rect>& src /* ocr symbol bboxes */,
+    std::vector<cv::Rect>& dst /* itd symbol bboxes */) {
+
+  dst.clear();
+
+  for (const auto& src_bbox : src) {
+    dst.emplace_back(src_bbox);
+    bbox_shrink(itd_img, dst.back());
   }
 }
 
@@ -893,7 +913,7 @@ OCRLine::symbol_bboxes_improve(
     if (subname.size() && debug_ext.size()) {
       std::stringstream ss;
       ss << subname << "-" << subtitle_number << "-" << line_number << "-symbol-ocr-bboxes." << debug_ext;
-      cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), src));
+      cv::imwrite(ss.str(), bboxes_draw(ocr_img, bordered_itd_bbox(), src));
     }
     cerr_log() << ": symbol ocr      bboxes: ";
     bboxes_stream(std::cerr, src) << std::endl;
@@ -901,7 +921,7 @@ OCRLine::symbol_bboxes_improve(
     if (subname.size() && debug_ext.size()) {
       std::stringstream ss;
       ss << subname << "-" << subtitle_number << "-" << line_number << "-symbol-contour-bboxes." << debug_ext;
-      cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), src2));
+      cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), src2));
     }
     cerr_log() << ": symbol contour  bboxes: ";
     bboxes_stream(std::cerr, src2) << std::endl;
@@ -909,7 +929,14 @@ OCRLine::symbol_bboxes_improve(
 
   std::vector<cv::Rect> tmp, tmp2;
 
-  symbol_bboxes_remove_invalid(src, tmp);
+  symbol_bboxes_remove_invalid(ocr_img, ocr_bbox, src, tmp);
+
+  symbol_bboxes_ocr_to_itd(tmp, tmp2);
+
+  // itd_img can have fewer pixels, so some characters that touch in ocr_img
+  // may not touch in itd_img. This means that it may be possible to detect
+  // more invalid OCR bboxes after conversion to itd bboxes.
+  symbol_bboxes_remove_invalid(itd_img, itd_bbox, tmp2, tmp);
 
   symbol_bboxes_fill_gaps(tmp, src2, tmp2);
 
@@ -935,7 +962,7 @@ OCRLine::symbol_bboxes_improve(
     if (subname.size() && debug_ext.size()) {
       std::stringstream ss;
       ss << subname << "-" << subtitle_number << "-" << line_number << "-symbol-improved-bboxes." << debug_ext;
-      cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), dst));
+      cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), dst));
     }
     cerr_log() << ": symbol improved bboxes: ";
     bboxes_stream(std::cerr, dst) << std::endl;
@@ -961,16 +988,30 @@ OCRLine::word_bboxes_remove_overlapping(
 
 void
 OCRLine::word_bboxes_remove_invalid(
-    const std::vector<cv::Rect>& src, // word bboxes
-    std::vector<cv::Rect>& dst,
+    const cv::Mat &img,
+    const std::vector<cv::Rect>& src /* word bboxes */,
+    std::vector<cv::Rect>& dst /* word bboxes */,
     const TextStats* const /* stats */) {
 
   dst.clear();
 
-  for (const auto& it : src) {
-    if (!bbox_is_invalid(it, false)) {
-      dst.emplace_back(it);
+  for (const auto& bbox : src) {
+    if (!bbox_is_invalid(img, bbox, false)) {
+      dst.emplace_back(bbox);
     }
+  }
+}
+
+void
+OCRLine::word_bboxes_ocr_to_itd(
+    const std::vector<cv::Rect>& src /* ocr word bboxes */,
+    std::vector<cv::Rect>& dst /* itd word bboxes */) {
+
+  dst.clear();
+
+  for (const auto& src_bbox : src) {
+    dst.emplace_back(src_bbox);
+    bbox_shrink(itd_img, dst.back());
   }
 }
 
@@ -994,10 +1035,10 @@ OCRLine::word_bboxes_remove_too_much_spacing(
 
   const int max_spacing = std::max(min_word_spacing_opt.value(), (int)(2 * avg_symbol_spacing_opt.value()));
 
-  for (const auto& it : src) {
-    const int max_seq_white_columns = bbox_max_seq_white_columns(img, it);
+  for (const auto& bbox : src) {
+    const int max_seq_white_columns = bbox_max_seq_white_columns(itd_img, bbox);
     if (max_seq_white_columns <= max_spacing) {
-      dst.emplace_back(it);
+      dst.emplace_back(bbox);
     }
   }
 }
@@ -1014,13 +1055,13 @@ OCRLine::word_bboxes_improve(
     if (subname.size() && debug_ext.size()) {
       std::stringstream ss;
       ss << subname << "-" << subtitle_number << "-" << line_number << "-word-ocr-bboxes." << debug_ext;
-      cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), src));
+      cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), src));
     }
     cerr_log() << ": word ocr      bboxes: ";
     bboxes_stream(std::cerr, src) << std::endl;
   }
 
-  std::vector<cv::Rect> tmp;
+  std::vector<cv::Rect> tmp, tmp2;
 
   // Remove overlapping before removing invalid bboxes.
   // In case of an invalid bbox, there may also be an overlapping bbox that
@@ -1028,17 +1069,28 @@ OCRLine::word_bboxes_improve(
   // the invalid bboxes.
   word_bboxes_remove_overlapping(src, tmp);
 
-  if (stats) {
-    std::vector<cv::Rect> tmp2;
+  word_bboxes_remove_invalid(ocr_img, tmp, tmp2, stats);
 
-    word_bboxes_remove_invalid(tmp, tmp2, stats);
+  word_bboxes_ocr_to_itd(tmp2, tmp);
+
+  if (!stats) {
+    // itd_img can have fewer pixels, so some characters that touch in ocr_img
+    // may not touch in itd_img. This means that it may be possible to detect
+    // more invalid OCR bboxes after conversion to itd bboxes.
+    // This is less likely with word bboxes than with symbol bboxes, but check
+    // anyway.
+    word_bboxes_remove_invalid(itd_img, tmp, dst, stats);
+  }
+  else {
+    // itd_img can have fewer pixels, so some characters that touch in ocr_img
+    // may not touch in itd_img. This means that it may be possible to detect
+    // more invalid OCR bboxes after conversion to itd bboxes.
+    // This is less likely with word bboxes than with symbol bboxes, but check
+    // anyway.
+    word_bboxes_remove_invalid(itd_img, tmp, tmp2, stats);
 
     word_bboxes_remove_too_much_spacing(tmp2, dst, *stats);
   }
-  else {
-    word_bboxes_remove_invalid(tmp, dst, stats);
-  }
-
 
   // TODO also remove other types of inaccurate bboxes.
   //      for example: if any of the contour bboxes partially or completely overlap a word bbox,
@@ -1048,7 +1100,7 @@ OCRLine::word_bboxes_improve(
     if (subname.size() && debug_ext.size()) {
       std::stringstream ss;
       ss << subname << "-" << subtitle_number << "-" << line_number << "-word-improved-bboxes." << debug_ext;
-      cv::imwrite(ss.str(), bboxes_draw(img, bordered_bbox(), dst));
+      cv::imwrite(ss.str(), bboxes_draw(itd_img, bordered_itd_bbox(), dst));
     }
     cerr_log() << ": word improved bboxes: ";
     bboxes_stream(std::cerr, dst) << std::endl;
@@ -1173,7 +1225,7 @@ OCRLine::bboxes_get_word_candidates(
 }
 
 cv::Mat
-OCRLine::word_symbol_bboxes_draw(
+OCRLine::itd_word_symbol_bboxes_draw(
   std::size_t const word_index,
   unsigned char grayscale_color) const {
 
@@ -1181,27 +1233,27 @@ OCRLine::word_symbol_bboxes_draw(
     throw generic_exception("symbol_bboxes_draw: word index out of range");
   }
 
-  const cv::Rect img_bbox = bordered_bbox();
-  cv::Mat result_img(img_bbox.height, img_bbox.width, img.type());
-  cv::Mat(img, img_bbox).copyTo(result_img);
+  const cv::Rect itd_img_bbox = bordered_itd_bbox();
+  cv::Mat result_itd_img(itd_img_bbox.height, itd_img_bbox.width, itd_img.type());
+  cv::Mat(itd_img, itd_img_bbox).copyTo(result_itd_img);
 
-  word_vec[word_index].symbol_bboxes_draw(result_img, img_bbox, grayscale_color);
+  word_vec[word_index].itd_symbol_bboxes_draw(result_itd_img, itd_img_bbox, grayscale_color);
 
-  return result_img;
+  return result_itd_img;
 }
 
 cv::Mat
-OCRLine::symbol_bboxes_draw(
+OCRLine::itd_symbol_bboxes_draw(
   unsigned char grayscale_color) const {
 
-  const cv::Rect img_bbox = bordered_bbox();
-  cv::Mat result_img(img_bbox.height, img_bbox.width, img.type());
-  cv::Mat(img, img_bbox).copyTo(result_img);
+  const cv::Rect itd_img_bbox = bordered_itd_bbox();
+  cv::Mat result_itd_img(itd_img_bbox.height, itd_img_bbox.width, itd_img.type());
+  cv::Mat(itd_img, itd_img_bbox).copyTo(result_itd_img);
 
   for (const auto& word : word_vec) {
-    word.symbol_bboxes_draw(result_img, img_bbox, grayscale_color);
+    word.itd_symbol_bboxes_draw(result_itd_img, itd_img_bbox, grayscale_color);
   }
 
-  return result_img;
+  return result_itd_img;
 }
 

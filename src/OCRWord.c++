@@ -994,12 +994,12 @@ OCRWord::dump(std::ostream& os) const {
 }
 
 void
-OCRWord::symbol_bboxes_draw(
+OCRWord::itd_symbol_bboxes_draw(
   const cv::Mat& img,
   const cv::Rect& line_bbox,
   unsigned char grayscale_color) const {
   for (const auto& symbol : symbol_vec) {
-    symbol.bboxes_draw(img, line_bbox, grayscale_color);
+    symbol.itd_bboxes_draw(img, line_bbox, grayscale_color);
   }
 }
 

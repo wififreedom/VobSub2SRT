@@ -30,16 +30,13 @@ public:
   OCRLine(
       const std::size_t subtitle_number,
       const std::size_t line_number,
-      const cv::Mat& img_arg,
-      std::vector<OCRWord>& word_vec_arg,
-      const cv::Rect& bbox,
-      std::vector<cv::Rect>& word_ocr_bbox_vec_arg,
-      std::vector<cv::Rect>& symbol_ocr_bbox_vec_arg);
-
-  cv::Rect
-  bbox() const {
-    return priv_bbox;
-  }
+      const cv::Mat& ocr_img,
+      const cv::Rect& ocr_bbox,
+      std::vector<cv::Rect>& word_ocr_bbox_vec,
+      std::vector<cv::Rect>& symbol_ocr_bbox_vec,
+      std::vector<OCRWord>& word_vec,
+      const cv::Mat& itd_img,
+      const cv::Rect& itd_bbox);
 
   // Returns the number of symbols, not including whitespace.
   std::size_t
@@ -90,23 +87,38 @@ private:
   cerr_log() const;
 
   cv::Rect
-  bordered_bbox() const;
+  bordered_itd_bbox() const;
 
-  bool bbox_is_invalid(
+  bool
+  bbox_is_invalid(
+      const cv::Mat& img,
       const cv::Rect& bbox,
-      const bool check_all_columns);
+      const bool check_all_columns) const;
 
   // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void symbol_bboxes_remove_invalid(
+  void
+  symbol_bboxes_remove_invalid(
+      const cv::Mat& img,
+      const cv::Rect& line_bbox,
+      const std::vector<cv::Rect>& src,
+      std::vector<cv::Rect>& dst);
+
+  // convert ocr symbol bboxes to itd symbol bboxes
+  // bboxes in src must be ordered by x coordinate, ascending.
+  // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
+  void
+  symbol_bboxes_ocr_to_itd(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
   // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void symbol_bboxes_fill_gaps(
+  void
+  symbol_bboxes_fill_gaps(
       const std::vector<cv::Rect>& src,
       const std::vector<cv::Rect>& src2,
       std::vector<cv::Rect>& dst);
@@ -114,7 +126,8 @@ private:
   // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void symbol_bboxes_replace_combined(
+  void
+  symbol_bboxes_replace_combined(
       const std::vector<cv::Rect>& src,
       const std::vector<cv::Rect>& src2,
       std::vector<cv::Rect>& dst);
@@ -126,7 +139,8 @@ private:
   // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void symbol_bboxes_remove_inaccurate_overlapping(
+  void
+  symbol_bboxes_remove_inaccurate_overlapping(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
@@ -137,7 +151,8 @@ private:
   // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void symbol_bboxes_remove_overlapped_by_1(
+  void
+  symbol_bboxes_remove_overlapped_by_1(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
@@ -149,7 +164,8 @@ private:
   // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // src and dst can be the same vector without conflict
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void symbol_bboxes_improve(
+  void
+  symbol_bboxes_improve(
       const std::string& subname,
       const std::vector<cv::Rect>& src, // ocr bboxes
       const std::vector<cv::Rect>& src2, // contour bboxes
@@ -158,29 +174,43 @@ private:
   // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void word_bboxes_remove_overlapping(
+  void
+  word_bboxes_remove_overlapping(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst);
 
   // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void word_bboxes_remove_invalid(
+  void
+  word_bboxes_remove_invalid(
+      const cv::Mat &img,
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst,
       const TextStats* const stats);
 
+  // convert ocr word bboxes to itd word bboxes
   // bboxes in src must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void word_bboxes_remove_too_much_spacing(
+  void
+  word_bboxes_ocr_to_itd(
+      const std::vector<cv::Rect>& src,
+      std::vector<cv::Rect>& dst);
+
+  // bboxes in src must be ordered by x coordinate, ascending.
+  // dst will be cleared first.
+  // On return, bboxes in dst are ordered by x coordinate, ascending.
+  void
+  word_bboxes_remove_too_much_spacing(
       const std::vector<cv::Rect>& src,
       std::vector<cv::Rect>& dst,
       const TextStats& stats);
 
   // bboxes in src and symbol_src must be ordered by x coordinate, ascending.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void word_bboxes_improve(
+  void
+  word_bboxes_improve(
       const std::string& subname,
       const std::vector<cv::Rect>& src, // word ocr bboxes
       const std::vector<cv::Rect>& symbol_src, // improved symbol bboxes
@@ -188,14 +218,16 @@ private:
       const TextStats* const stats);
 
   // bboxes in src and src2 must be ordered by x coordinate, ascending.
-  bool word_bboxes_bound_all_symbol_bboxes(
+  bool
+  word_bboxes_bound_all_symbol_bboxes(
       const std::vector<cv::Rect>& src, // word bboxes
       const std::vector<cv::Rect>& src2); // symbol bboxes
 
   // bboxes in src and src2 must be ordered by x coordinate, ascending.
   // dst will be cleared first.
   // On return, bboxes in dst are ordered by x coordinate, ascending.
-  void word_bboxes_fill_gaps_and_combine_based_on_spacing(
+  void
+  word_bboxes_fill_gaps_and_combine_based_on_spacing(
       const std::vector<cv::Rect>& src,
       const std::vector<cv::Rect>& src2,
       std::vector<cv::Rect>& dst,
@@ -215,12 +247,12 @@ private:
     std::vector<cv::Rect>& dst);
 
   cv::Mat
-  word_symbol_bboxes_draw(
+  itd_word_symbol_bboxes_draw(
     std::size_t const word_index,
     unsigned char grayscale_color) const;
 
   cv::Mat
-  symbol_bboxes_draw(
+  itd_symbol_bboxes_draw(
     unsigned char grayscale_color) const;
 
 private:
@@ -228,31 +260,74 @@ private:
   std::size_t line_number;
 
   // In case of batch OCR: may be a combined image.
-  cv::Mat img;
-
-  std::vector<OCRWord> word_vec;
+  //
+  // If possible, when converting the original subtitle image from grayscale
+  // to black and white, as much detail as possible is preserved for OCR.
+  //
+  // This means that OCR works well, but symbols are fatter and may have more
+  // touching pixels than is good for italic detection. For italic detection,
+  // a different image is used, see itd_img.
+  cv::Mat ocr_img;
 
   // Bounding box for the line. Reliable.
-  cv::Rect priv_bbox;
+  // Refers to ocr_img.
+  cv::Rect ocr_bbox;
 
   // Bounding boxes for the words as returned by OCR.
   // These are not reliable and need to be compared to opencv contour bboxes
   // before assigning bboxes to ocr_words and ocr_symbols.
   // Used to help determine accurate bboxes for symbols.
-  // Sorted by tesseract by cv::Rect.x coordinate, ascending.
-  std::vector<cv::Rect> word_ocr_bbox_vec;
+  // Sorted by cv::Rect.x coordinate, ascending.
+  // Refers to ocr_img.
+  // Can be used with itd_img by shrinking the bboxes, see
+  // symbol_bboxes_ocr_to_itd().
+  std::vector<cv::Rect> ocr_word_bbox_vec;
 
   // Bounding boxes for the symbols as returned by OCR.
   // - With Tesseract's LSTM engine, this is correct to the pixel for most
   //   symbols, but can be wildly inaccurate for some symbols.
   // Used to help determine accurate bboxes for symbols.
-  // Sorted by tesseract by cv::Rect.x coordinate, ascending.
-  std::vector<cv::Rect> symbol_ocr_bbox_vec;
+  // Sorted by cv::Rect.x coordinate, ascending.
+  // Refers to ocr_img.
+  // Can be used with itd_img by shrinking the bboxes, see
+  // word_bboxes_ocr_to_itd().
+  std::vector<cv::Rect> ocr_symbol_bbox_vec;
+
+  std::vector<OCRWord> word_vec;
+
+  // In case of batch OCR: may be a combined image.
+  //
+  // itd_img may have fewer black pixels (symbol pixels) and more white pixels
+  // (background pixels) than ocr_img. For italic detection to work, it must
+  // not have a black pixel at any location where ocr_img has a white pixel.
+  //
+  // This is achieved by using the same or a more stringent threshold when
+  // converting the original subtitle image from grayscale to black and white
+  // than used for ocr_img.
+  //
+  // This way, symbols are skinnier and less often have touching pixels, which
+  // helps improve accuracy of contour detection and therefore also accuracy of
+  // italic detection.
+  //
+  // Using a more stringent threshold is not possible if the original image has
+  // only one color other than the background color, in which case ocr_img and
+  // itd_img are identical.
+  //
+  // The image is the same size and has the same coordinate origin as ocr_img,
+  // so that coordinates of OCR line/word/symbol bboxes can be used with this
+  // image.
+  cv::Mat itd_img;
+
+  // Bounding box for the line. Reliable.
+  // Refers to itd_img
+  cv::Rect itd_bbox;
 
   // improved word bboxes
+  // Refers to itd_img
   std::vector<cv::Rect> nwv;
 
   // improved symbol bboxes
+  // Refers to itd_img
   std::vector<cv::Rect> nsv;
 };
 
