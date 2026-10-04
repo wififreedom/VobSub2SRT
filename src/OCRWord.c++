@@ -110,6 +110,9 @@ OCRWord::bboxes_assign(
       else if (src.size() < num_ocr_symbols()) {
 	return bboxes_assign_repair_too_few_bboxes(img, src, *stats, test_only);
       }
+      else {
+	return bboxes_assign_repair_too_many_bboxes(img, src, *stats, test_only);
+      }
     }
 
     if (debug || subtitle_number == debug_subtitle_number) {
@@ -971,6 +974,92 @@ OCRWord::bboxes_assign_repair_too_few_bboxes(
   return false;
 }
 
+bool
+OCRWord::bboxes_assign_repair_too_many_bboxes(
+    const cv::Mat& /* img */,
+    const std::vector<cv::Rect>& src,
+    const TextStats& stats,
+    const bool test_only) {
+
+  auto cerr_log = [&]() -> std::ostream& {
+    return std::cerr << "subtitle " << subtitle_number <<
+      ", line " << line_number <<
+      ", word " << word_number <<
+      (test_only ? " (test only)" : "") <<
+      ": OCRWord::bboxes_assign_repair_too_many_bboxes: ";
+  };
+
+  std::vector<cv::Rect> cands = src;
+
+  bool ok = false;
+  if (cands.size() >= (symbol_vec.size() + 2)) {
+    // CASE: "%", "½", or similar
+    //
+    // Characters like that may have 3 partially overlapping bboxes.
+    //
+    // find a bbox:
+    // - that has overlap in x direction with the previous and following bbox,
+    // - that is preceded and followed by a bbox that has a lower height,
+    //   - the preceding bbox having a lower (y + height),
+    //   - the following bbox having a higher y,
+    for (std::size_t cand_i = 1; (cand_i + 1) < cands.size(); ) {
+      const cv::Rect p = cands[cand_i - 1];
+      const cv::Rect c = cands[cand_i];
+      const cv::Rect n = cands[cand_i + 1];
+      if (/* overlap with previous bbox */
+	  (p.x + p.width) > c.x &&
+	  /* overlap with next bbox */
+	  (c.x + c.width) > n.x &&
+	  /* previous bbox has lower height and lower (y + height) */
+	  p.height < c.height && ((p.y + p.height) < (c.y + c.height)) &&
+	  /* next bbox has lower height and higher y */
+	  n.height < c.height && n.y > c.y) {
+	cands[cand_i - 1] = p | c | n; /* union */
+	cands.erase(cands.begin() + cand_i);
+	cands.erase(cands.begin() + cand_i);
+	// continue at cand[i + 1]
+	cand_i++;
+
+	if (debug || subtitle_number == debug_subtitle_number) {
+	  cerr_log() << "merge candidate bboxes at index " << (cand_i - 1) <<
+	    ", " << cand_i << ", " << (cand_i + 1) <<
+	    " for possible symbol like '%'" << std::endl;
+	}
+      }
+      else {
+	cand_i++;
+      }
+
+      if (cands.size() < (symbol_vec.size() + 2)) {
+	break;
+      }
+    }
+
+    if (cands.size() == symbol_vec.size()) {
+      if (bboxes_assign(cands, &stats, test_only)) {
+	ok = true;
+      }
+    }
+  }
+
+  if (ok) {
+    if (debug || subtitle_number == debug_subtitle_number) {
+      cerr_log() << "possible bboxes too wide: repaired" << std::endl;
+    }
+    return true;
+  }
+
+  // remove any assigned bboxes.
+  bboxes_remove();
+  if (debug || subtitle_number == debug_subtitle_number) {
+    cerr_log() << "possible bboxes too wide: could not repair" << std::endl;
+    dump(std::cerr);
+    bboxes_stream(std::cerr, cands) << std::endl;
+  }
+  return false;
+}
+
+
 void
 OCRWord::dump(std::ostream& os) const {
   os << "  word: ";
@@ -991,6 +1080,15 @@ OCRWord::dump(std::ostream& os) const {
   for (const auto& symbol : symbol_vec) {
     symbol.dump(os);
   }
+}
+
+std::vector<cv::Rect>
+OCRWord::itd_symbol_bboxes_get() const {
+  std::vector<cv::Rect> vec;
+  for (const auto& symbol : symbol_vec) {
+    vec.append_range(symbol.bboxes());
+  }
+  return vec;
 }
 
 void

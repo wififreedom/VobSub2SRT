@@ -124,6 +124,9 @@ public:
   dump(
       std::ostream& os) const;
 
+  std::vector<cv::Rect>
+  itd_symbol_bboxes_get() const;
+
   void
   itd_symbol_bboxes_draw(
     const cv::Mat& img,
@@ -139,6 +142,13 @@ private:
 
   bool
   bboxes_assign_repair_too_few_bboxes(
+      const cv::Mat& img,
+      const std::vector<cv::Rect>& src,
+      const TextStats& stats,
+      const bool test_only);
+
+  bool
+  bboxes_assign_repair_too_many_bboxes(
       const cv::Mat& img,
       const std::vector<cv::Rect>& src,
       const TextStats& stats,

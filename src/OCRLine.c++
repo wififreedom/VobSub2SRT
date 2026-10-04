@@ -445,7 +445,7 @@ OCRLine::bboxes_assign(
 	    cv::imwrite(ss.str(), itd_word_symbol_bboxes_draw(word_i, 128));
 	  }
 	  cerr_log() << ", word " << (word_i + 1) << ": " << word << ": assigned symbol bboxes for word: ";
-	  bboxes_stream(std::cerr, cands) << std::endl;
+	  bboxes_stream(std::cerr, word.itd_symbol_bboxes_get()) << std::endl;
 	}
       } else {
 	success = false;
