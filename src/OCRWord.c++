@@ -995,10 +995,9 @@ OCRWord::bboxes_assign_repair_too_many_bboxes(
   if (cands.size() >= (symbol_vec.size() + 2)) {
     // CASE: "%", "½", or similar
     //
-    // Characters like that may have 3 partially overlapping bboxes.
+    // Symbols like that may have 3 bboxes, that may or may not overlap
     //
     // find a bbox:
-    // - that has overlap in x direction with the previous and following bbox,
     // - that is preceded and followed by a bbox that has a lower height,
     //   - the preceding bbox having a lower (y + height),
     //   - the following bbox having a higher y,
@@ -1006,11 +1005,7 @@ OCRWord::bboxes_assign_repair_too_many_bboxes(
       const cv::Rect p = cands[cand_i - 1];
       const cv::Rect c = cands[cand_i];
       const cv::Rect n = cands[cand_i + 1];
-      if (/* overlap with previous bbox */
-	  (p.x + p.width) > c.x &&
-	  /* overlap with next bbox */
-	  (c.x + c.width) > n.x &&
-	  /* previous bbox has lower height and lower (y + height) */
+      if (/* previous bbox has lower height and lower (y + height) */
 	  p.height < c.height && ((p.y + p.height) < (c.y + c.height)) &&
 	  /* next bbox has lower height and higher y */
 	  n.height < c.height && n.y > c.y) {
@@ -1044,7 +1039,7 @@ OCRWord::bboxes_assign_repair_too_many_bboxes(
 
   if (ok) {
     if (debug || subtitle_number == debug_subtitle_number) {
-      cerr_log() << "possible bboxes too wide: repaired" << std::endl;
+      cerr_log() << "repaired" << std::endl;
     }
     return true;
   }

@@ -100,16 +100,6 @@ bboxes_sort_and_combine(
 
   bboxes_sort(bbox_vec);
 
-  // Double quotes are detected as two separate bboxes,
-  // They are in the top half of the height range.
-  int min_y = bbox_vec[0].y;
-  int max_y = bbox_vec[0].y + bbox_vec[0].height;
-  for (const auto& it : bbox_vec) {
-    min_y = std::min(min_y, it.y);
-    max_y = std::max(max_y, it.y + it.height);
-  }
-  int double_quote_max_y = min_y + ((max_y - min_y) / 2);
-
   // Combine some of the bboxes:
   // - Overlapping x coordinates: ':', ';', '=', 'i', 'j', '!' and '?', etc.
   //   - Careful: the contour bboxes of italic symbols sometimes also overlap
@@ -138,12 +128,43 @@ bboxes_sort_and_combine(
 	}
       }
     }
-    else if (
-	((rect1.y + rect1.height) < double_quote_max_y) &&
+    else {
+      pos++;
+      if (pos < i) {
+	bbox_vec[pos] = rect2;
+      }
+    }
+  }
+  bbox_vec.resize(pos + 1);
+
+  // Detect and merge the two separate bboxes for double quotes.
+  // To prevent false positives, double quotes must be detected after
+  // combining the bboxes vertically above.
+  // For example: the symbol sequence "'i", with bboxes for the "'", the dot
+  // of the "i", and the rest of the "i", in that order. The "'" and the dot
+  // of the "i" might be combined as a double quote.
+
+  // Double quotes are detected as two separate bboxes,
+  // They are in the top half of the height range.
+  int min_y = bbox_vec[0].y;
+  int max_y = bbox_vec[0].y + bbox_vec[0].height;
+  for (const auto& it : bbox_vec) {
+    min_y = std::min(min_y, it.y);
+    max_y = std::max(max_y, it.y + it.height);
+  }
+  int double_quote_max_y = min_y + ((max_y - min_y) / 2);
+
+  pos = 0;
+  for (std::size_t i = 1; i < bbox_vec.size(); i++) {
+    cv::Rect& rect1 = bbox_vec[pos];
+    const cv::Rect& rect2 = bbox_vec[i];
+
+    if (((rect1.y + rect1.height) < double_quote_max_y) &&
 	((rect2.y + rect2.height) < double_quote_max_y)) {
       // assume '"' (double quote), merge.
       rect1 = rect1 | rect2; // Union = minimum covering rectangle
-    } else {
+    }
+    else {
       pos++;
       if (pos < i) {
 	bbox_vec[pos] = rect2;
