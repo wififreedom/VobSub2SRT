@@ -1030,6 +1030,7 @@ OCRLine::word_bboxes_remove_too_much_spacing(
   std::optional<int> min_word_spacing_opt = stats.word_spacing_min();
   std::optional<float> avg_symbol_spacing_opt = stats.symbol_spacing_avg();
   if (!min_word_spacing_opt.has_value() || !avg_symbol_spacing_opt.has_value()) {
+    dst = src;
     return;
   }
 

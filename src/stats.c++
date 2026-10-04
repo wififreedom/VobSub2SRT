@@ -59,7 +59,7 @@ MinAvgMaxStat::add(const int value) {
 std::optional<int>
 MinAvgMaxStat::min() const {
   // don't return a value if the sample is too small
-  return (priv_min_count >= 10) ? std::optional(priv_min) : std::nullopt;
+  return (priv_count >= 10) ? std::optional(priv_min) : std::nullopt;
 }
 
 std::optional<float>
