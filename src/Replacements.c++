@@ -22,10 +22,13 @@
 #include "generic_exception.h++"
 #include "debug.h++"
 
+#include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <sys/stat.h>
 
 Replacements::Replacement::Replacement(
     const std::regex_constants::syntax_option_type syntax_options,
@@ -80,8 +83,9 @@ read_line(
 }
 
 void
-Replacements::read(
-    const std::string& file_name)
+Replacements::read_file(
+    const std::string& file_name,
+    const bool verbose)
 {
   // Open replacements input file
   std::ifstream ifs;
@@ -92,6 +96,10 @@ Replacements::read(
     ifs.exceptions(std::ios_base::badbit);
   } catch (...) {
     throw generic_exception("Could not open replacements file '" + file_name + "' for reading");
+  }
+
+  if (verbose) {
+    std::cerr << "Reading replacements from '" << file_name << "'" << std::endl;
   }
 
   int line_number = 0;
@@ -160,6 +168,44 @@ Replacements::read(
       ss << "'" << file_name << "': line " << line_number << ": missing empty line after replacement pattern.";
       throw generic_exception(ss.str());
     }
+  }
+}
+
+void
+Replacements::read(
+    const std::string& path,
+    const bool verbose) {
+
+  struct stat sb;
+  std::vector<std::string> file_path_vec;
+
+  if (stat(path.c_str(), &sb) == -1) {
+    std::stringstream ss;
+    ss << "'" << path << "': could not read replacements: " << strerror(errno);
+    throw generic_exception(ss.str());
+  }
+  if (sb.st_mode & S_IFDIR) {
+    for (const auto& entry : std::filesystem::directory_iterator(path)) {
+      const std::filesystem::path entry_path = entry.path();
+      const std::string& entry_name = entry_path.filename();
+
+      if (entry_name.starts_with("replacements_") &&
+	  entry_name.ends_with(".txt") &&
+	  (stat(entry_path.string().c_str(), &sb) == 0) &&
+	  (sb.st_mode & S_IFREG)) {
+	file_path_vec.emplace_back(entry_path.string());
+      }
+    }
+  }
+  else if (sb.st_mode & S_IFREG) {
+    file_path_vec.emplace_back(path);
+  }
+
+  // sort by byte value, to get predictable results
+  std::sort(file_path_vec.begin(), file_path_vec.end());
+
+  for (const auto& file_path : file_path_vec) {
+    read_file(file_path, verbose);
   }
 }
 

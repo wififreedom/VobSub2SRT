@@ -66,8 +66,15 @@ public:
   }
 
   void
+  read_file(
+      const std::string& file_name,
+      const bool verbose);
+
+  // reads file or if directory, <path>/replacements_*.txt, in UTF-8 sort order
+  void
   read(
-      const std::string& file_name);
+      const std::string& path,
+      const bool verbose);
 
   std::string
   replace(

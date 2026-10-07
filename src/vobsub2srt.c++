@@ -267,7 +267,7 @@ main2(int argc, char **argv) {
   unsigned min_width = 1;
   unsigned min_height = 1;
   std::size_t ocr_batch_size = 20;
-  std::vector<std::string> replacements_file_name_vec;
+  std::vector<std::string> replacements_path_vec;
   bool detect_italic = false;
   unsigned base_duration = 0;
   unsigned chars_per_sec = 19;
@@ -296,7 +296,7 @@ main2(int argc, char **argv) {
       add_option("min-width", min_width, "Minimum width in pixels to consider a subtitle picture for OCR (Default: 1)").
       add_option("min-height", min_height, "Minimum height in pixels to consider a subtitle picture for OCR (Default: 1)").
       add_option("ocr-batch-size", batch_size, "Perform OCR on combined images. Can fix empty or inaccurate OCR results.\n\t\t\t\tDefault: 20.").
-      add_option("replacements", replacements_file_name_vec, "Immediately after OCR, apply replacements defined in the specified file(s).\n\t\t\t\tOption can be specified multiple times.").
+      add_option("replacements", replacements_path_vec, "Immediately after OCR, apply replacements defined in the specified file or,\n\t\t\t\tif a directory, in the replacements_*.txt files in the directory.\n\t\t\t\tOption can be specified multiple times.").
       add_option("detect-italic", detect_italic, "Detect italic. Add <i> and </i> to the output where applicable.").
       add_option("base-duration", base_duration, "Max subtitle display duration (msec) = \n\t\t\t\t  base_duration + 1000 * subtitle_length_in_chars / chars_per_sec\n\t\t\t\tDefault: 0 = disable, recommended: 1500.").
       add_option("chars-per-sec", chars_per_sec, "See --base-duration. Default: 19, recommended: 15..20.");
@@ -329,11 +329,8 @@ main2(int argc, char **argv) {
   // Read the replacements file first, to immediately report syntax errors in
   // the file, instead of after OCR has finished.
   Replacements replacements;
-  for (const auto& it : replacements_file_name_vec) {
-    if (verbosity) {
-      std::cerr << "Reading replacements from '" << it << "'" << std::endl;
-    }
-    replacements.read(it);
+  for (const auto& it : replacements_path_vec) {
+    replacements.read(it, (verbosity > 0));
   }
 
   for (const auto& sub_file : subname_vec) {
