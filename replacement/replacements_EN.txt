@@ -102,9 +102,14 @@ am I
 \b[Il]'[Il][Il]?\b
 I'll
 
-# Match: "lll"
+# Match: "lll", as a word
 # Replace with: "I'll"
 \blll\b
+I'll
+
+# Match: "III", as a word at the begin of a line.
+# Replace with: "I'll"
+^III\b
 I'll
 
 # Match: "l' "
@@ -112,6 +117,11 @@ I'll
 # Note: avoid accidentally matching the French "l'" as in "l'accident"
 \bl'( )
 I'll\1
+
+# Match: "TI" as a word
+# Replace with: "I'll"
+\bTI\b
+I'll
 
 # Match: " [", followed by an ASCII alphabetical character.
 # Replace with: " I ", followed by the ASCII alphabetical character.
@@ -140,6 +150,7 @@ I
 I\1
 
 # Match: "lL" as a word
+# Replace with: "I"
 \blL\b
 I
 
@@ -152,6 +163,26 @@ I
 # Replace with: The matched end of a sentence, followed by "I".
 ([^.][.!?][ \n]*)i
 \1I
+
+# Match: "dol" as a word
+# Replace with: "do I"
+\bdol\b
+do I
+
+# Match: "ofthe" as a word
+# Replace with: "of the"
+\bofthe\b
+of the
+
+# Match: '"' preceded by a space or newline, and followed by two digits and anything not a '"', followed by ' "'
+# Replace with: '
+([ \n])"([0-9][0-9][^"]*[ \n]")
+\1'\2
+
+# Match: "«"
+# Replace with: ".."
+«
+..
 
 \‘
 '
