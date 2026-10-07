@@ -79,10 +79,11 @@ Tesseract has a limit to the image size it can process, so large values may not 
 20 seems a sufficiently large and safe value.
 Default value: 20.
 .TP
-\fB\-\-replacements replacements-file\fR
-Immediately after OCR, apply the replacements specified in replacements-file.
-This option can be specified multiple times to use replacements from several files, for example to use replacements for several languages that are stored in separate files.
-The source code repository contains example replacements files.
+\fB\-\-replacements replacements-path\fR
+Immediately after OCR, apply the replacements specified in replacements-path.
+If replacement_path is a directory, replacements are read from all replacements_*.txt files in that directory, sorted by file name.
+This option can be specified multiple times to use replacements from several files and directories.
+The source code repository contains a directory with example replacements files.
 .TP
 \fB\-\-detect-italic\fR
 Detect italic text, and add <i> and </i> tags to the output where deemed applicable.
